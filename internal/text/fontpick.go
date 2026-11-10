@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package text
 
@@ -103,28 +103,41 @@ func concat(a, b []string) []string {
 	return append(out, b...)
 }
 
-// withBold 粗体优先：把文件名含 Bold/Heavy/Semibold 的命中提到最前，
-// 其余按关键词顺序追加（同一关键词内保持路径字典序，候选顺序稳定可测）。
+// withBold 粗体优先：**在每个关键词分组内部**把文件名含 Bold/Heavy/Semibold 的提前，
+// 组与组之间仍保持关键词优先级。
+//
+// 旧实现把所有 bold 文件统一提到最前，结果 Roboto-Bold（只有拉丁字形）会排到
+// NotoSansCJK-Regular 前面：粗体中文全部命中不到字形，只画出 0.9×字号的空白宽度
+// （表现就是「胶囊有宽度但没有文字」）。
 func withBold(files []string, bold bool, keywords []string) []string {
-	base := pickFonts(files, keywords...)
-	if !bold || len(base) == 0 {
-		return base
+	if !bold {
+		return pickFonts(files, keywords...)
 	}
-	var boldFirst []string
-	seen := make(map[string]bool, len(base))
-	for _, p := range base {
-		low := strings.ToLower(filepath.Base(p))
-		if strings.Contains(low, "bold") || strings.Contains(low, "heavy") || strings.Contains(low, "semibold") {
-			boldFirst = append(boldFirst, p)
+	out := make([]string, 0, len(files))
+	seen := make(map[string]bool, len(files))
+	for _, kw := range keywords {
+		if kw == "" {
+			continue
+		}
+		low := strings.ToLower(kw)
+		var regular, bolds []string
+		for _, p := range files {
+			if seen[p] {
+				continue
+			}
+			name := strings.ToLower(filepath.Base(p))
+			if !strings.Contains(name, low) {
+				continue
+			}
 			seen[p] = true
+			if strings.Contains(name, "bold") || strings.Contains(name, "heavy") || strings.Contains(name, "semibold") {
+				bolds = append(bolds, p)
+			} else {
+				regular = append(regular, p)
+			}
 		}
-	}
-	out := make([]string, 0, len(base))
-	out = append(out, boldFirst...)
-	for _, p := range base {
-		if !seen[p] {
-			out = append(out, p)
-		}
+		out = append(out, bolds...)
+		out = append(out, regular...)
 	}
 	return out
 }

@@ -1,9 +1,9 @@
 //go:build !windows && !js && !android && !ios
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -11,7 +11,7 @@ import (
 	"os/exec"
 	"sync"
 
-	"gogui/internal/audio"
+	"guis/internal/audio"
 )
 
 // platformCaps 类 Unix 端能力表。
@@ -31,12 +31,31 @@ var (
 
 func platformCaps() []Cap {
 	capOnce.Do(func() {
-		caps := []Cap{CapSystemDark, CapKeepAwake, CapModernNotify}
+		// 开机自启：Linux/BSD 走 XDG autostart、macOS 走 LaunchAgents，均为用户级。
+		caps := []Cap{CapSystemDark, CapKeepAwake, CapModernNotify, CapAutoStart}
+		// 纯 Go 实现（与桌面环境无关）：标准目录、文件监听、系统信息。
+		caps = append(caps, CapKnownFolders, CapFileWatch, CapSystemInfo)
+		// 电源与电池：Linux 读 /sys/class/power_supply，macOS 走 pmset。
+		caps = append(caps, powerCaps()...)
 		if commandExists("xclip", "xsel", "wl-paste", "pbpaste") {
 			caps = append(caps, CapClipboard, CapClipboardWatch)
 		}
+		// 富文本剪贴板：xclip 支持按 target 读写 text/html。
+		if commandExists("xclip") {
+			caps = append(caps, CapClipboardRich)
+		}
 		if commandExists("zenity", "kdialog", "osascript") {
-			caps = append(caps, CapDialogs)
+			caps = append(caps, CapDialogs, CapNativeDialog)
+		}
+		// 会话控制：logind / systemctl / pmset 可用时才能锁屏与注销关机。
+		if commandExists("loginctl", "systemctl", "pmset") {
+			caps = append(caps, CapSession)
+		}
+		// 单实例：flock 实现，类 Unix 全平台可用。
+		caps = append(caps, CapSingleInstance)
+		// 显示器枚举：xrandr（X11）或 displayplacer（macOS）。
+		if commandExists("xrandr", "displayplacer", "osascript") {
+			caps = append(caps, CapMultiMonitor)
 		}
 		if commandExists("gio") {
 			caps = append(caps, CapRecycleBin)
@@ -48,6 +67,8 @@ func platformCaps() []Cap {
 				caps = append(caps, CapAudio)
 			}
 		}
+		// 系统集成（热键 / 托盘 / 拖入）：由各平台的 caps_integration_*.go 声明
+		caps = append(caps, platformIntegrationCaps()...)
 		capCache = caps
 	})
 	return capCache

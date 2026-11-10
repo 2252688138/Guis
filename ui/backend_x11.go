@@ -1,9 +1,9 @@
 //go:build (linux || freebsd) && !android
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"gogui/internal/gpu"
-	"gogui/internal/x11"
+	"guis/internal/gpu"
+	"guis/internal/x11"
 )
 
 // Linux / BSD 窗口后端：Xlib（purego）+ EGL（purego）+ OpenGL 3.3。
@@ -78,6 +78,8 @@ func newBackend(opts Options) (*platformWin, error) {
 
 	w := x11Disp.CreateWindow(opts.Title, opts.Width, opts.Height)
 	x11Disp.SetWMDelete(w)
+	// 声明支持 XDND 文件拖入（托盘 / 热键不需要预先声明）
+	initDropX11(x11Disp, w)
 
 	ctx, err := x11.NewContext(x11Disp.Ptr(), w)
 	if err != nil {
@@ -121,7 +123,7 @@ func pollMessages() bool {
 	n := len(x11Wins)
 	x11Mu.Unlock()
 	if dpy == nil || n == 0 {
-		if os.Getenv("GOGUI_X11_DEBUG") != "" {
+		if os.Getenv("GUIS_X11_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "[x11] 事件循环退出：display=%v windows=%d\n", dpy != nil, n)
 		}
 		return false
@@ -164,6 +166,23 @@ func dispatchX11(dpy *x11.Display, ev *x11.Event) {
 		if p.handler != nil {
 			p.handler(e)
 		}
+	}
+
+	// 全局热键优先：命中即消费，不再当作普通键盘输入往下发
+	if ev.Type() == x11.KeyPress && x11DispatchHotkey(ev) {
+		return
+	}
+	// 托盘图标事件 / XDND 拖入同样先于普通输入处理
+	if x11DispatchTray(ev) {
+		return
+	}
+	if x11DispatchDND(dpy, ev, func(paths []string, px, py float32) {
+		if !p.accepts || p.handler == nil {
+			return
+		}
+		p.handler(Event{Type: EvDropFiles, X: lx(int(px)), Y: lx(int(py)), Paths: paths})
+	}) {
+		return
 	}
 
 	switch ev.Type() {
@@ -229,7 +248,7 @@ func dispatchX11(dpy *x11.Display, ev *x11.Event) {
 			}
 		}
 	case x11.ClientMessage:
-		if os.Getenv("GOGUI_X11_DEBUG") != "" {
+		if os.Getenv("GUIS_X11_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "[x11] ClientMessage type=%d\n", ev.MessageType())
 		}
 		if ev.MessageType() == dpy.Atom("WM_DELETE_WINDOW") {
@@ -240,7 +259,7 @@ func dispatchX11(dpy *x11.Display, ev *x11.Event) {
 		delete(x11Wins, p.win)
 		left := len(x11Wins)
 		x11Mu.Unlock()
-		if os.Getenv("GOGUI_X11_DEBUG") != "" {
+		if os.Getenv("GUIS_X11_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "[x11] DestroyNotify win=%d remaining=%d\n", p.win, left)
 		}
 	}
@@ -322,7 +341,7 @@ func (p *platformWin) Swap() {
 		return
 	}
 	p.swapFailOnce.Do(func() {
-		fmt.Fprintf(os.Stderr, "[gogui] eglSwapBuffers 失败：窗口表面可能已失效，已触发重画\n")
+		fmt.Fprintf(os.Stderr, "[guis] eglSwapBuffers 失败：窗口表面可能已失效，已触发重画\n")
 	})
 	if p.handler != nil {
 		scale := p.scale
@@ -450,10 +469,7 @@ func (p *platformWin) AcceptDrops() bool      { return p.accepts }
 // SetImePosition 输入法候选框位置（需 XIM，一期空实现）。
 func (p *platformWin) SetImePosition(x, y int32) {}
 
-// RegisterHotKey 全局热键（需要 XGrabKey，一期空实现 → 返回 0 表示不可用）。
-func (p *platformWin) RegisterHotKey(mods, vk uint32, fn func()) int32 { return 0 }
-
-func (p *platformWin) UnregisterHotkey(id int32) {}
+// 全局热键见 hotkey_x11.go（XGrabKey + 根窗口 KeyPress 匹配）。
 
 func (p *platformWin) AttachCompose(pw, ph int32) {}
 func (p *platformWin) HasCompose() bool           { return false }
@@ -469,7 +485,7 @@ func (p *platformWin) Close() {
 		return
 	}
 	p.closed = true
-	if os.Getenv("GOGUI_X11_DEBUG") != "" {
+	if os.Getenv("GUIS_X11_DEBUG") != "" {
 		fmt.Fprintf(os.Stderr, "[x11] platformWin.Close\n")
 	}
 	if p.handler != nil {
@@ -486,9 +502,13 @@ func (p *platformWin) Destroy() {
 	if x11Disp != nil {
 		x11Disp.Destroy(p.win)
 	}
+	dropX11Release(p.win)
 	delete(x11Wins, p.win)
 	if len(x11Wins) == 0 && x11Disp != nil {
-		// 最后一个窗口：断开连接（避免残留线程/资源）
+		// 最后一个窗口：释放全局热键抓取，再断开连接（避免残留线程/资源）
+		x11Mu.Unlock()
+		x11UngrabAllHotkeys()
+		x11Mu.Lock()
 		x11Disp.Close()
 		x11Disp = nil
 	}

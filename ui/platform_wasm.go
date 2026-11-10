@@ -1,9 +1,9 @@
 //go:build js && wasm
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"syscall/js"
 
-	"gogui/internal/text"
+	"guis/internal/text"
 )
 
 // 浏览器端平台垫片（只放**真正 Web 特有**的实现）。

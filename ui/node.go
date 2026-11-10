@@ -1,13 +1,13 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
-	"gogui/internal/geom"
-	"gogui/internal/gpu"
+	"guis/internal/geom"
+	"guis/internal/gpu"
 )
 
 // Kind 节点类型。
@@ -33,6 +33,12 @@ const (
 	KChart
 	// KRichText 富文本（行内混排样式 / 链接 / 行内代码）。
 	KRichText
+	// KCodeEditor 代码编辑器（虚拟化行渲染 / 语法高亮 / 行号 / 小地图 / LSP）。
+	KCodeEditor
+	// KIcon 矢量图标（Iconfont：路径光栅化纹理，可任意换色/缩放，不依赖字体字形）。
+	KIcon
+	// KTerm 伪终端（VT/ANSI 字符网格，自绘控件，可接 PTY 或自定义数据源）。
+	KTerm
 )
 
 // Node 声明式节点（每帧重建，交互状态按 Key 继承）。
@@ -53,6 +59,14 @@ type Node struct {
 	WebView *WebView
 	// Chart 图表数据与缓存（Kind == KChart 时生效）。
 	Chart *Chart
+	// Code 代码编辑器状态（Kind == KCodeEditor 时生效）。
+	Code *CodeEditorState
+	// IconName 图标名（Kind == KIcon 时生效，见 ui/iconfont.go 的内置图标表）。
+	IconName string
+	// IconStroke 图标线宽（24×24 设计网格单位，0 = 图标自带线宽）。
+	IconStroke float32
+	// Term 伪终端状态（Kind == KTerm 时生效）。
+	Term *TermState
 	// Spans 富文本片段（Kind == KRichText 时生效）。
 	Spans    []TextSpan
 	RichOpts RichTextOptions
@@ -69,10 +83,16 @@ type Node struct {
 	OnClickAt func(x, y float32)
 	// OnHover 悬停变化回调。
 	OnHover func(bool)
+	// OnHoverAt 悬停移动回调：鼠标停留期间每帧一次（含进入帧），坐标相对节点左上角。
+	// 需要「鼠标停在某个词上就弹提示」的自绘控件（代码编辑器）用它。
+	OnHoverAt func(x, y float32)
 	// OnPress 鼠标按下即触发（在按下后的第一帧分发一次，早于 OnDrag/OnClick）。
 	// 自绘标题栏拖动、菜单按下等需要“按下就响应”的场景用它。
-	OnPress  func()
-	OnScroll func(dy float32)
+	OnPress func()
+	// OnRightClickAt 鼠标右键点击（坐标相对节点左上角）：右键菜单用。
+	// 右键不会触发 OnPress / OnClick，也不参与左键拖选。
+	OnRightClickAt func(x, y float32)
+	OnScroll       func(dy float32)
 	// OnChar / OnKey 仅在节点获得键盘焦点时收到事件。
 	OnChar func(rune)
 	OnKey  func(uint32)
@@ -89,9 +109,21 @@ type Node struct {
 	// 运行时状态
 	Hover, Pressed, Focus bool
 	ScrollY               float32
+	// staticOK / cacheRoot 每帧由布局后的缓存标记阶段写入（见 ui/layers.go）：
+	// staticOK: 0 未计算、1 子树纯静态、2 含动态/交互内容
+	// cacheRoot: 本帧可作为缓存根（最外层合格容器）
+	// layerKey: 结构路径哈希（父哈希 + 子序号），跨帧稳定，用作缓存索引
+	staticOK  int8
+	cacheRoot bool
+	layerKey  uint64
 	// wrapW 测量阶段的折行宽度：WrapOn 文本由布局写入，绘制阶段复用同一宽度，
 	// 保证「测量行数」与「实际绘制行数」一致。
-	wrapW    float32
+	wrapW float32
+	// NoMirror 该子树不参与 RTL 镜像（时间轴、图表坐标系、代码编辑器内部这类
+	// 方向本身有语义的内容）。见 ui/i18n_rtl.go。
+	NoMirror bool
+	// rtlDone 本棵树是否已经做过 RTL 镜像（同一棵树重复 Layout 时不重复翻转）。
+	rtlDone  bool
 	ContentH float32
 	Frame    geom.Rect
 	Parent   *Node
@@ -179,6 +211,36 @@ func Video(p *Player) *Node {
 // VideoSized 指定显示尺寸的视频画面节点。
 func VideoSized(p *Player, w, h float32) *Node {
 	return Video(p).St(St().W(w).H(h))
+}
+
+// VideoSurface 纯画面视频节点：每帧自行推进播放时钟（等价于 VideoPlayer 的画面部分），
+// 但不绘制控制条。适合片头 / 背景视频这类「只要画面」的场景。
+//
+// 注意：直接用 Video(p) 不会推进时钟——帧只在 VideoPlayer 里前进，裸节点会一直停在
+// 「解码中…」占位。需要自己画画面时用本函数。
+func VideoSurface(key string, p *Player) *Node {
+	if p == nil {
+		return Empty("未绑定播放器", "用 ui.NewPlayer(clip) 创建播放状态")
+	}
+	p.advance(AnimTime())
+	if p.PlayingNow() || p.Clip != nil || p.Source != nil {
+		markAnim()
+	}
+	return Video(p).K(key)
+}
+
+// VideoSurfaceTick 纯画面 + 推进播放时钟，但**不**点亮全局续帧（animBusy）。
+//
+// 常驻低帧率动画（桌宠这类）用它：调用方按自己的节奏 ui.RequestRedraw()，
+// 只在该出下一帧时整窗重绘，避免 60fps 空转。
+//
+// 注意：不调用本节点所在视图，播放时钟就不会推进——调用方必须保证按帧率重绘。
+func VideoSurfaceTick(key string, p *Player) *Node {
+	if p == nil {
+		return Empty("未绑定播放器", "用 ui.NewPlayer(clip) 创建播放状态")
+	}
+	p.advanceQuiet(AnimTime())
+	return Video(p).K(key)
 }
 
 // Button 按钮（可点击）。
@@ -300,7 +362,7 @@ func Abs(child *Node) *Node {
 
 func (n *Node) St(s *Style) *Node {
 	if s != nil {
-		n.Style = n.Style.merge(*s)
+		n.Style.merge(s)
 	}
 	return n
 }
@@ -359,8 +421,14 @@ func (n *Node) DisabledOn(v bool) *Node { n.Disabled = v; return n }
 
 func (n *Node) OnHoverEvt(fn func(bool)) *Node { n.OnHover = fn; return n }
 
+// HoverAtEvt 悬停移动回调（x/y 相对节点左上角，鼠标停留期间每帧一次）。
+func (n *Node) HoverAtEvt(fn func(x, y float32)) *Node { n.OnHoverAt = fn; return n }
+
 // OnPressEvt 鼠标按下回调（需设置 Key，可用于自绘标题栏拖动）。
 func (n *Node) OnPressEvt(fn func()) *Node { n.OnPress = fn; return n }
+
+// RightClickEvt 鼠标右键回调（x/y 相对节点左上角），右键菜单用。
+func (n *Node) RightClickEvt(fn func(x, y float32)) *Node { n.OnRightClickAt = fn; return n }
 
 func (n *Node) ScrollEvt(fn func(float32)) *Node { n.OnScroll = fn; return n }
 

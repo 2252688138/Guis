@@ -1,9 +1,9 @@
 //go:build js && wasm
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package text
 
@@ -23,9 +23,12 @@ var (
 )
 
 // RegisterFont 注册一份字体数据（ttf/otf/ttc 均可）。name 用于 FontFamily 匹配。
+//
+// 同一个 name 重复注册视为「热替换」（首屏子集 → 全量字体，见 ui.HotAddFont）：
+// 已解析的 sfnt.Font 必须一起失效，否则 loadSystemFont 仍返回旧字体，
+// 界面看起来像「注入没生效」。
 func RegisterFont(name string, data []byte) {
 	webFontMu.Lock()
-	defer webFontMu.Unlock()
 	if _, ok := webFonts[name]; !ok {
 		webFontList = append(webFontList, name)
 	}
@@ -33,6 +36,13 @@ func RegisterFont(name string, data []byte) {
 	if webFontDef == "" {
 		webFontDef = name
 	}
+	webFontMu.Unlock()
+
+	// 锁顺序：loadSystemFont 是 sysFontsMu → webFontMu（mapFontFile 里查表），
+	// 这里必须先放掉 webFontMu 再拿 sysFontsMu，避免反向加锁死锁。
+	sysFontsMu.Lock()
+	delete(sysFonts, name)
+	sysFontsMu.Unlock()
 }
 
 // SetDefaultFont 指定默认字体名。

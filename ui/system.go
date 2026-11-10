@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -44,7 +44,7 @@ func DropZone(key, hint string, height float32, onDrop func(paths []string)) *No
 		height = 132
 	}
 	if hint == "" {
-		hint = "把文件拖到这里"
+		hint = T("ui.file.dropHere")
 	}
 	icon := Stack(
 		Box().St(St().W(46).H(46).R(14).BgC(ColHover).Stroke(1, ColLine)),
@@ -54,7 +54,7 @@ func DropZone(key, hint string, height float32, onDrop func(paths []string)) *No
 	body := Column(
 		icon,
 		Text(hint).St(St().Text(12.5, 500, ColTextDim).TAlign(AlignCenter)),
-		Text("拖入文件或文件夹 · 支持多选").St(St().Text(11, 400, ColPlaceholder).TAlign(AlignCenter)),
+		Text(T("ui.file.dropHint")).St(St().Text(11, 400, ColPlaceholder).TAlign(AlignCenter)),
 	)
 	body.Align = AlignCenter
 	body.Justify = AlignCenter

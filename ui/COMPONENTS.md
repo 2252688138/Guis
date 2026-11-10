@@ -1,11 +1,11 @@
-# GoGUI 组件模块化清单（一键引入）
+# GUIS 组件模块化清单（一键引入）
 
 所有组件都在 `ui` 包内，**按文件分模块**，彼此无隐式依赖：每个组件只依赖
-`gogui/internal/*`（geom / gpu / text / win32）与本包基础节点（`Box/Row/Column/Stack/Text`），
+`guis/internal/*`（geom / gpu / text / win32）与本包基础节点（`Box/Row/Column/Stack/Text`），
 把它们连同 `internal/` 一起拷进新项目即可使用（`go.mod` 里 module 名改成自己的）。
 
 ```go
-import "gogui/ui"
+import "guis/ui"
 ```
 
 ---
@@ -322,6 +322,19 @@ ui.Pager(ui.PagerOptions{Key: "list", Page: page, Total: 9, Locked: 6, OnPick: g
 | `ui.MoveToRecycleBin(path)` | `SHFileOperationW(FO_DELETE\|FOF_ALLOWUNDO)` | 移入回收站（可还原） |
 | `ui.SystemDarkMode()` | 读注册表 `AppsUseLightTheme` | 跟随系统深浅色 |
 | `(*Tray).Notify(title, msg)` | `Shell_NotifyIconW(NIF_INFO)` | 托盘气泡通知 |
+| `ui.KnownFolder(dir)` / `EnsureFolder` / `SubFolder` | `SHGetKnownFolderPath`（非 Win 走 XDG / Apple 约定） | 标准目录 |
+| `ui.WatchDir(dir, opts, fn)` / `WatchFile` | `ReadDirectoryChangesW` + `WM_CLIPBOARDUPDATE` 同构的事件通道 | 目录变更监听（非 Win 扫描兜底） |
+| `ui.MessageBox` / `MessageBoxEx` | `MessageBoxW`（非 Win：zenity / osascript） | 原生消息框（崩溃兜底） |
+| `ui.SystemInfo()` / `IsElevated()` / `PowerState()` | `RtlGetVersion` / `GetTokenInformation` / `GetSystemPowerStatus` | 系统信息与电源 |
+| `App.SetTaskbarProgress` / `SetBadge` / `Flash` | `ITaskbarList3` + 自绘 HICON | 任务栏进度 / 角标 / 闪烁 |
+| `App.SetOpacity` / `SetClickThrough` / `SetKeepOnBottom` / `SetSkipTaskbar` / `SetCaptureExcluded` / `SetDarkTitleBar` / `SetBackdrop` / `SetMinSize` | `WS_EX_LAYERED` / `WS_EX_TRANSPARENT` / `DwmSetWindowAttribute` / `SetWindowDisplayAffinity` / `WM_GETMINMAXINFO` | 窗口特效与尺寸约束 |
+| `ui.FileIcon` / `FileThumbnail` / `FileTypeName` | `SHGetFileInfoW` + `IImageList` | 文件图标与缩略图 |
+| `ui.DragFiles(paths, x, y)` | OLE `DoDragDrop` + 自实现 `IDataObject`/`IDropSource` | 把文件拖到别的应用 |
+| `ui.ClipboardSetHTML` / `ClipboardHTML` / `ClipboardSetRTF` | `CF_HTML` / `Rich Text Format`（含定宽头） | 富文本剪贴板 |
+| `ui.SendText` / `SendKey` / `MouseClickAt` / `MouseWheel` | `SendInput`（Unicode 扫描码） | 键鼠模拟（仅 Windows） |
+| `ui.LockScreen` / `Suspend` / `Shutdown` / `Reboot` / `SignOut` | `LockWorkStation` / `InitiateShutdownW` / `ExitWindowsEx` | 会话控制 |
+| `ui.CreateShortcut` / `SetFileAssociation` | `IShellLink` + `IPersistFile` / `HKCU\Software\Classes` | 快捷方式与文件关联 |
+| `ui.SystemVolume` / `SetSystemVolume` / `ToggleSystemMute` | Core Audio `IAudioEndpointVolume` | 系统主音量（非 Win 走命令行） |
 
 热键修饰键常量：`ui.HotAlt / HotCtrl / HotShift / HotWin / HotNoRepeat`；
 `RegisterHotkey` 内部已带上 `MOD_NOREPEAT`，返回 id（0 表示被其它程序占用）。
@@ -348,14 +361,76 @@ ui.Pager(ui.PagerOptions{Key: "list", Page: page, Total: 9, Locked: 6, OnPick: g
 | 输入 | `AutoComplete` / `TagInput` / `Rate` / `RangeSlider` / `KeyCapture` / `TimePicker` / `Cascader` / `Upload` / `ColorPicker` |
 | 展示 | `Carousel` / `Timeline` / `Steps` / `Segmented` / `Descriptions` / `Statistic` / `Calendar` / `Watermark` / `ImagePreview` / `AvatarGroup` / `Tour` / `EllipsisText` |
 | 表格 | `TableV`（虚拟/分组/合计/列宽拖拽）/ `ReorderList` / `MoveSlice` |
-| 桌面 | `Monitors` / `CaptureScreen` / `WatchClipboard` / `SingleInstance` / `Print` / `PrintPreview` / `ApplyUpdate` |
+| 桌面 | `Monitors` / `CaptureScreen` / `WatchClipboard` / `WatchDir` / `KnownFolder` / `FileIcon` / `DragFiles` / `SingleInstance` / `Print` / `PrintPreview` / `ApplyUpdate` |
 | 编辑 | `NewRichEditor` / `RichEditor` / `RichToolbar` / `NewUndo` / `SelectionArea` |
 | 浮层 | `AutoCompleteLayers` / `TimeLayers` / `CascaderLayers` / `ColorLayers` / `CommandPaletteLayer` / `TourLayer` / `NotifyLayer` / `ImagePreviewLayer` |
 
-平台差异用 `HasCap` 分支（新增 `CapPrint` / `CapScreenCapture` / `CapClipboardWatch` /
-`CapMultiMonitor` / `CapSingleInstance` / `CapModernNotify`）；非 Windows 端均有安全降级桩。
+平台差异用 `HasCap` 分支（`CapPrint` / `CapScreenCapture` / `CapClipboardWatch` /
+`CapMultiMonitor` / `CapSingleInstance` / `CapModernNotify` / `CapFileWatch` / `CapKnownFolders` /
+`CapDragOut` / `CapFileIcon` / `CapNativeDialog` / `CapSystemInfo` / `CapTaskbar` / `CapWindowFX` /
+`CapClipboardRich` / `CapPowerStatus` / `CapSession` / `CapInputSim` / `CapShellLink`）；
+非 Windows 端均有安全降级桩。
 
 ---
+
+## 4.6 办公文档（Excel / Word / PDF）
+
+数据层在 `internal/office`（纯标准库），渲染在 `ui/office.go`，示例见
+`go run ./cmd/gallery --case office`（也支持 `--case excel|word|pdf` 直接落到页签）。
+
+```go
+f, err := office.Open("报表.xlsx")   // .docx / .pdf 同理；office.Detect 只判类型
+node := ui.OfficeView("doc", f)      // Excel→表格，Word→文档流，PDF→白纸+定位文本
+```
+
+| 分组 | 入口 |
+| --- | --- |
+| 读写 | `office.Open` / `Detect` / `Sniff` / `ReadXLSX` `WriteXLSX` / `ReadDOCX` `WriteDOCX` / `ReadPDF` `WritePDF` |
+| 模型 | `Spreadsheet` `Sheet`（`Set` `SetNum` `SortRowsBy` `SumColumn`）/ `WordDoc` `Block`（`Heading` `Paragraph` `Bullet` `Table`）/ `PDFDoc` `PDFPage`（`Text` `TextBold` `Line` `Rect`） |
+| 转换 | `TableFromSheet` / `SheetFromBlock` / `DocxFromSpreadsheet` |
+| 渲染 | `SheetTable` / `SpreadsheetView` / `WordView` / `PDFView` / `OfficeView` |
+| 打印导出 | `OfficePrintable` / `SheetPrintable` / `WordPrintable` / `PDFPrintable` / `ExportPDF` |
+
+要点：
+
+- **中文字体**：`WritePDF` 自动找系统 TrueType 中文字体并只嵌入用到的字形（子集化），
+  同时写 /ToUnicode，所以 PDF 里的中文可复制、可检索；`GUIS_PDF_FONT` 或
+  `PDFOptions.FontPath` 可指定字体，`PDFOptions.NoEmbed` 回退内置 Helvetica。
+- **坐标约定**：`PDFPage` 与 `PrintCanvas` 一致——原点左上、Y 向下、单位 pt，
+  所以 `ui.ExportPDF("a.pdf", title, printable)` 能把任何 `Printable` 打印稿导出为 PDF。
+- **预览不走位图**：PDF 解析后按文本项重排成绝对定位节点，缩放不糊、可跟随主题色。
+- 超大表用 `SheetViewOptions{MaxRows, MaxCols}` 截断（页脚会提示还有多少行 / 列）。
+
+---
+
+## 4.7 国际化（i18n / RTL，六端一致）
+
+| 文件 | 入口 |
+| --- | --- |
+| `ui/i18n.go` | `T` / `Tf` / `Ts` / `Tn` / `TOr` / `SetLocale` / `UseLocale` / `AutoLocale` / `MatchLocale` / `Locales` / `RegisterLocale` |
+| `ui/i18n_builtin.go` + `ui/locale/*.json` | 内置中文 / English 语言包（`go:embed`，桌面 / Web / 移动端同一份） |
+| `ui/i18n_locales.go` | 16 种语言的元数据：月份名 / 星期名 / 日期图案 / 货币 / 一周首日 / 方向 |
+| `ui/i18n_format.go` | `LocaleNumber` / `LocalePercent` / `LocaleCurrency` / `LocaleDate` / `LocaleTime` / `LocaleRelative` / `LocaleDuration` / `LocaleList` / `LocaleBytes` |
+| `ui/i18n_plural.go` | CLDR 复数规则（英 / 中 / 日 / 韩 / 俄 / 波 / 阿 / 希 / 法 / 印地…） |
+| `ui/i18n_platform*.go` | 系统语言探测：Win32 UI 语言 / `LANG` / `AppleLocale` / `navigator.languages`，移动端可注入 |
+| `ui/i18n_rtl.go` | RTL 整树水平镜像（`Node.NoMirror` 可豁免，`MirrorX` 供自绘控件用） |
+| `ui/i18n_widget.go` | `LocaleSwitcher` / `LocaleSegmented` / `LocaleSettingsRow` / `LocaleOptions` |
+
+```go
+ui.Run(ui.Options{Title: "我的应用"}, view)   // 语言：偏好 > 系统 > en-US
+ui.UseLocale("en-US")                         // 切换并记住
+ui.T("ui.dialog.ok")                          // 确定 / OK
+ui.Tn("ui.time.minutesAgo", 5)                // 5 分钟前 / 5 minutes ago
+ui.LocaleDate(time.Now(), "medium")           // 2026年11月6日 / Nov 6, 2026
+ui.LocaleCurrency(9.9, "")                    // ¥9.90 / 9,90 €
+```
+
+* 字符串表是扁平 JSON（`{"key":"文本"}`），业务用 `LoadCatalog` / `LoadCatalogFile` 追加；
+  key 用 `app.` 前缀避免与框架的 `ui.` 命名空间冲突。
+* 复数用后缀：`items.one` / `items.other` / `items.few` / `items.many`；只有一种形式时写 `items`。
+* 切到阿拉伯语 / 希伯来语等 RTL 语言会自动镜像布局与文本对齐；时间轴、图表坐标系等
+  方向有语义的子树设 `NoMirror`。
+* gallery 的「设置」页有现成的语言切换器（`case_settings.go`）。
 
 ## 5. 在 gallery 里看效果
 
@@ -387,7 +462,7 @@ go run ./cmd/gallery --case video   # 视频播放器
 
 ```go
 // 强制走系统解码器（验证回退路径 / 系统无 ffmpeg 时的默认行为）
-os.Setenv("GOGUI_DECODER", "system")
+os.Setenv("GUIS_DECODER", "system")
 src, err := ui.NewMediaPlayer("movie.mp4")
 fmt.Println(src.Info().Backend) // system
 ```

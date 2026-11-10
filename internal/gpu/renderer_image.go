@@ -1,12 +1,12 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package gpu
 
 import (
-	"gogui/internal/geom"
+	"guis/internal/geom"
 )
 
 const floatsImgVert = 16
@@ -73,6 +73,9 @@ func (r *Renderer) DrawImage(im Image) {
 	uv := [6][2]float32{{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}}
 	for i := 0; i < 6; i++ {
 		u, v := uv[i][0], uv[i][1]
+		if im.FlipY {
+			v = 1 - v
+		}
 		switch im.Rot & 3 {
 		case 1: // 90° 顺时针
 			u, v = v, 1-u

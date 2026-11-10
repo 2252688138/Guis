@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
@@ -18,6 +18,15 @@ type MONITORINFO struct {
 }
 
 type RECT struct{ Left, Top, Right, Bottom int32 }
+
+// MINMAXINFO 窗口尺寸约束（WM_GETMINMAXINFO 的 lParam）。
+type MINMAXINFO struct {
+	PtReserved     POINT
+	PtMaxSize      POINT
+	PtMaxPosition  POINT
+	PtMinTrackSize POINT
+	PtMaxTrackSize POINT
+}
 
 type MSG struct {
 	Hwnd     uintptr
@@ -164,6 +173,8 @@ const (
 	// 文件拖入（shell32 DragAcceptFiles 投递）与全局热键
 	WM_DROPFILES = 0x0233
 	WM_HOTKEY    = 0x0312
+	// 剪贴板内容变化（AddClipboardFormatListener 注册后系统投递）
+	WM_CLIPBOARDUPDATE = 0x031D
 
 	PM_REMOVE   = 0x0001
 	PM_NOREMOVE = 0x0000
@@ -414,10 +425,17 @@ const (
 	FOF_ALLOWUNDO      = 0x0040
 	FOF_NOERRORUI      = 0x0400
 
-	// 注册表读取（系统深浅色）
-	HKEY_CURRENT_USER = 0x80000001
-	KEY_READ          = 0x20019
-	REG_SZ            = 1
+	// 注册表读写（系统深浅色 / 持久化环境变量）
+	HKEY_CURRENT_USER  = 0x80000001
+	HKEY_LOCAL_MACHINE = 0x80000002
+	KEY_READ           = 0x20019
+	KEY_SET_VALUE      = 0x0002
+	REG_SZ             = 1
+
+	// 环境变量变更广播（WM_SETTINGCHANGE）
+	HWND_BROADCAST   = 0xFFFF
+	WM_SETTINGCHANGE = 0x001A
+	SMTO_ABORTIFHUNG = 0x0002
 
 	// 剪贴板文件列表格式
 	CF_HDROP = 15

@@ -1,15 +1,17 @@
 //go:build !windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
 	"errors"
 	"image"
+	"strconv"
+	"strings"
 )
 
 // 桌面增强能力的非 Windows 降级实现：符号齐全、返回零值 / 不支持。
@@ -29,14 +31,68 @@ type Monitor struct {
 	Primary bool
 }
 
-// Monitors 非 Windows 端返回空（X11 可后续接 XRandR）。
-func Monitors() []Monitor { return nil }
+// monitorsNative 平台显示器枚举实现（Linux: xrandr；macOS: displayplacer / AppleScript）。
+var monitorsNative func() []Monitor
 
-// MonitorAt 非 Windows 端恒不支持。
-func MonitorAt(x, y int) (Monitor, bool) { return Monitor{}, false }
+// parseWxH 解析 "2560x1440"（显示器枚举共用）。
+func parseWxH(s string) (int, int, bool) {
+	i := strings.IndexByte(s, 'x')
+	if i <= 0 {
+		return 0, 0, false
+	}
+	w, err1 := strconv.Atoi(s[:i])
+	h, err2 := strconv.Atoi(s[i+1:])
+	if err1 != nil || err2 != nil || w <= 0 || h <= 0 {
+		return 0, 0, false
+	}
+	return w, h, true
+}
 
-// VirtualScreen 非 Windows 端返回零值。
-func VirtualScreen() (int, int, int, int) { return 0, 0, 0, 0 }
+// Monitors 非 Windows 端：优先用各平台实现（Linux 走 xrandr，macOS 走 displayplacer）；
+// 都不可用时返回 nil，业务侧应先用 HasCap(CapMultiMonitor) 判断。
+func Monitors() []Monitor {
+	if monitorsNative != nil {
+		if ms := monitorsNative(); len(ms) > 0 {
+			return ms
+		}
+	}
+	return nil
+}
+
+// MonitorAt 返回包含该屏幕坐标的显示器。
+func MonitorAt(x, y int) (Monitor, bool) {
+	for _, m := range Monitors() {
+		if x >= m.X && x < m.X+m.W && y >= m.Y && y < m.Y+m.H {
+			return m, true
+		}
+	}
+	return Monitor{}, false
+}
+
+// VirtualScreen 所有显示器并集；没有显示器信息时返回零值。
+func VirtualScreen() (int, int, int, int) {
+	ms := Monitors()
+	if len(ms) == 0 {
+		return 0, 0, 0, 0
+	}
+	minX, minY := ms[0].X, ms[0].Y
+	maxX, maxY := ms[0].X+ms[0].W, ms[0].Y+ms[0].H
+	for _, m := range ms[1:] {
+		if m.X < minX {
+			minX = m.X
+		}
+		if m.Y < minY {
+			minY = m.Y
+		}
+		if m.X+m.W > maxX {
+			maxX = m.X + m.W
+		}
+		if m.Y+m.H > maxY {
+			maxY = m.Y + m.H
+		}
+	}
+	return minX, minY, maxX - minX, maxY - minY
+}
 
 // CaptureScreen 非 Windows 端暂不支持。
 func CaptureScreen(x, y, w, h int, cursor bool) (*image.NRGBA, error) {
@@ -73,20 +129,20 @@ func WatchClipboard(fn func(ClipboardInfo)) (stop func()) {
 	return watchClipboardPolling(fn)
 }
 
-// SingleInstance 非 Windows 端不做锁，恒视为首个实例。
-func SingleInstance(key string) bool { return true }
-
-// NotifyFirstInstance 非 Windows 端空实现。
-func NotifyFirstInstance(key string, args []string) {}
-
-// WatchSecondInstance 非 Windows 端空实现。
-func WatchSecondInstance(key string, fn func(args []string)) (stop func()) {
-	return func() {}
-}
+// 单实例锁在非 Windows 端见 system_instance_unix.go（flock）/ system_instance_stub.go。
 
 // ---- 打印 ----
 
 func printDocument(hwnd uintptr, title string, doc Printable) (bool, error) {
+	return false, errors.New("ui: 当前平台暂不支持打印")
+}
+
+// printList / printDefault / printTo 非 Windows 端无打印机。
+func printList() []string { return nil }
+
+func printDefault() string { return "" }
+
+func printTo(printer, title string, doc Printable) (bool, error) {
 	return false, errors.New("ui: 当前平台暂不支持打印")
 }
 

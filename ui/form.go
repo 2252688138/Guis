@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -475,17 +475,18 @@ func Textarea(key, value, placeholder string, height float32, onChange func(stri
 		padY  = float32(8)
 	)
 	focused := IsFocused(key)
-	runes := []rune(value)
-	caret, ok := textareaCaret[key]
-	if !ok || caret > len(runes) || caret < 0 {
-		caret = len(runes)
-	}
-	textareaCaret[key] = caret
+	// 影子文本 / 类型：移动端输入法同步用（见 ui/ime_android.go）
+	inputShadow[key] = value
+	inputKind[key] = 1
+	sel := inputTextSel(key, value)
+	textareaCaret[key] = sel.Caret
+	inputAnchor[key] = sel.Anchor
+	caret := sel.Caret
 
 	// 光标所在行 / 列（列按 rune 计）
 	line, col := 0, 0
-	for i := 0; i < caret && i < len(runes); i++ {
-		if runes[i] == '\n' {
+	for i := 0; i < caret && i < len(sel.Runes); i++ {
+		if sel.Runes[i] == '\n' {
 			line++
 			col = 0
 		} else {
@@ -507,6 +508,11 @@ func Textarea(key, value, placeholder string, height float32, onChange func(stri
 	if top < 0 {
 		top = 0
 	}
+	// 每行起始 rune 下标（选区高亮按行切段用）
+	lineAt := make([]int, len(lines))
+	for i := 1; i < len(lines); i++ {
+		lineAt[i] = lineAt[i-1] + len([]rune(lines[i-1])) + 1
+	}
 
 	showCaret := focused && int(AnimTime()*2)%2 == 0
 	cells := make([]*Node, 0, shown)
@@ -515,23 +521,23 @@ func Textarea(key, value, placeholder string, height float32, onChange func(stri
 	}
 	for i := top; i < len(lines) && i < top+shown; i++ {
 		ln := []rune(lines[i])
+		base := lineAt[i]
 		var row *Node
 		if showCaret && i == line {
 			c := col
 			if c > len(ln) {
 				c = len(ln)
 			}
-			row = Row(
-				Text(string(ln[:c])).St(St().Text(13, 400, ColText)),
-				Box().St(St().W(1.5).H(16).BgC(ColPrimary).MarXY(0.5, 0)),
-				Text(string(ln[c:])).St(St().Text(13, 400, ColText)),
-			).St(St().H(lineH).AnimSlowOn()).AlignTo(AlignCenter)
+			rowCells := TextSegNodes(sel, base, base+c, 13, 400, ColText, true)
+			rowCells = append(rowCells, Box().St(St().W(1.5).H(16).BgC(ColPrimary).MarXY(0.5, 0)))
+			rowCells = append(rowCells, TextSegNodes(sel, base+c, base+len(ln), 13, 400, ColText, true)...)
+			row = Row(rowCells...).St(St().H(lineH).AnimSlowOn()).AlignTo(AlignCenter)
 		} else {
-			txt := string(ln)
-			if txt == "" {
-				txt = " "
+			rowCells := TextSegNodes(sel, base, base+len(ln), 13, 400, ColText, true)
+			if len(rowCells) == 0 {
+				rowCells = append(rowCells, Text(" ").St(St().Text(13, 400, ColText).CenterYOn()))
 			}
-			row = Row(Text(txt).St(St().Text(13, 400, ColText).CenterYOn())).St(St().H(lineH))
+			row = Row(rowCells...).St(St().H(lineH))
 		}
 		cells = append(cells, row)
 	}
@@ -545,22 +551,42 @@ func Textarea(key, value, placeholder string, height float32, onChange func(stri
 	).St(St().Wp(100).H(height).R(10).BgC(ColInput).Stroke(1, stroke).FocusOn().Clipped())
 
 	n := box.K(key)
-	n.OnClick = func() {
-		SetFocus(key)
+	// set 统一回写状态与光标
+	set := func() {
+		textareaCaret[key] = sel.Caret
+		inputAnchor[key] = sel.Anchor
+		if onChange != nil {
+			onChange(sel.Text())
+		}
 		RequestRedraw()
 	}
-	// set 统一回写状态与光标
-	set := func(rs []rune, c int) {
-		if c < 0 {
-			c = 0
+	// caretAt 把节点内坐标换算成光标（文本区左上角 padX/padY，行高 lineH）。
+	// 内容超过可视高度时会跟随光标滚动，所以纵坐标要加上已滚过的 top 行。
+	caretAt := func(px, py float32) int {
+		return sel.IndexAtPoint(px-padX, py-padY+float32(top)*lineH, lineH, 13, 400)
+	}
+	n.OnClick = func() {
+		SetFocus(key)
+		if inputDragged[key] {
+			inputDragged[key] = false
+			return
 		}
-		if c > len(rs) {
-			c = len(rs)
-		}
-		textareaCaret[key] = c
-		if onChange != nil {
-			onChange(string(rs))
-		}
+		sel.SetCaret(caretAtMouse(key, caretAt, sel.Caret), false)
+		set()
+	}
+	n.OnPress = func() {
+		inputDragged[key] = false
+		// 按下即获焦：拖选过程中就要显示高亮（未聚焦只画纯文本）
+		SetFocus(key)
+		pos := caretAtMouse(key, caretAt, sel.Caret)
+		sel.Anchor, sel.Caret = pos, pos
+		set()
+	}
+	n.OnDrag = func(x, y float32) {
+		inputDragged[key] = true
+		sel.Caret = caretAt(x, y)
+		sel.Clamp()
+		textareaCaret[key], inputAnchor[key] = sel.Caret, sel.Anchor
 		RequestRedraw()
 	}
 	n.OnChar = func(r rune) {
@@ -568,56 +594,93 @@ func Textarea(key, value, placeholder string, height float32, onChange func(stri
 		case '\r', '\n':
 			return // 换行由 OnKey 处理，避免重复插入
 		case '\t':
-			r = ' '
+			sel.Insert(" ")
 		case 8: // 退格
-			if caret > 0 {
-				rs := append(runes[:caret-1:caret-1], runes[caret:]...)
-				set(rs, caret-1)
-			}
-			return
+			sel.Backspace()
 		case 127: // Delete
-			if caret < len(runes) {
-				rs := append(runes[:caret:caret], runes[caret+1:]...)
-				set(rs, caret)
-			}
-			return
+			sel.DeleteForward()
+		default:
+			sel.Insert(string(r))
 		}
-		rs := make([]rune, 0, len(runes)+1)
-		rs = append(rs, runes[:caret]...)
-		rs = append(rs, r)
-		rs = append(rs, runes[caret:]...)
-		set(rs, caret+1)
+		set()
 	}
 	n.OnKey = func(k uint32) {
+		shift := ShiftDown()
+		ctrl := CtrlDown()
 		switch k {
+		case VK_BACK: // 退格（框架不再把 WM_CHAR 0x08 当文本送入，退格走键位）
+			sel.Backspace()
 		case 0x0D: // Enter 换行
-			rs := make([]rune, 0, len(runes)+1)
-			rs = append(rs, runes[:caret]...)
-			rs = append(rs, '\n')
-			rs = append(rs, runes[caret:]...)
-			set(rs, caret+1)
+			sel.Insert("\n")
 		case 0x1B: // Esc 失焦
 			SetFocus("")
 			RequestRedraw()
+			return
 		case 0x25: // ←
-			set(runes, caret-1)
+			if ctrl {
+				sel.SetCaret(wordLeft(sel.Text(), sel.Caret), shift)
+			} else {
+				sel.Move(-1, shift)
+			}
 		case 0x27: // →
-			set(runes, caret+1)
+			if ctrl {
+				sel.SetCaret(wordRight(sel.Text(), sel.Caret), shift)
+			} else {
+				sel.Move(1, shift)
+			}
 		case 0x26: // ↑ 上一行同列
-			set(runes, taVertical(runes, caret, -1))
+			sel.SetCaret(taVertical(sel.Runes, sel.Caret, -1), shift)
 		case 0x28: // ↓ 下一行同列
-			set(runes, taVertical(runes, caret, 1))
+			sel.SetCaret(taVertical(sel.Runes, sel.Caret, 1), shift)
 		case 0x24: // Home 行首
-			set(runes, taLineStart(runes, caret))
+			sel.SetCaret(taLineStart(sel.Runes, sel.Caret), shift)
 		case 0x23: // End 行尾
-			set(runes, taLineEnd(runes, caret))
+			sel.SetCaret(taLineEnd(sel.Runes, sel.Caret), shift)
 		case 0x2E: // Delete
-			if caret < len(runes) {
-				rs := append(runes[:caret:caret], runes[caret+1:]...)
-				set(rs, caret)
+			sel.DeleteForward()
+		case 0x41, 0x61, 0x43, 0x63, 0x58, 0x78, 0x56, 0x76: // Ctrl+A/C/X/V 兜底
+			if !ctrl {
+				return
+			}
+			switch k {
+			case 0x41, 0x61:
+				sel.SelectAll()
+			case 0x43, 0x63:
+				sel.Copy()
+			case 0x58, 0x78:
+				sel.Cut()
+			case 0x56, 0x76:
+				sel.Paste(true)
+			}
+		default:
+			return
+		}
+		set()
+	}
+	RegisterTextEdit(key, func(act TextEditAction) bool {
+		switch act {
+		case TextEditSelectAll:
+			sel.SelectAll()
+		case TextEditCopy:
+			if sel.Selected() != "" {
+				return sel.Copy()
+			}
+			if sel.Text() == "" {
+				return false
+			}
+			return ClipboardSetText(sel.Text())
+		case TextEditCut:
+			if !sel.Cut() {
+				return false
+			}
+		case TextEditPaste:
+			if !sel.Paste(true) {
+				return false
 			}
 		}
-	}
+		set()
+		return true
+	})
 	return n
 }
 
@@ -696,6 +759,9 @@ func NumberInput(key string, v float64, min, max, step float64, onChange func(fl
 		K(key + "-minus").Tap(func() { bump(-step) })
 	plus := Text("+").St(St().Text(14, 600, ColTextDim).W(30).H(FieldH).CenterYOn().TAlign(AlignCenter)).
 		K(key + "-plus").Tap(func() { bump(step) })
+	// 中间输入区必须有基础宽度：只给 Grow(1) 时 flex 基础尺寸为 0，
+	// 外层 Row 收缩适应布局下拿不到剩余空间，输入框宽度塌成 0（或只剩几像素），
+	// 数字被 Clipped 裁掉，看起来就是「空框 + 加减号」。
 	mid := Box(Input(key, fmtV(), "", func(s string) {
 		f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 		if err != nil {
@@ -704,7 +770,7 @@ func NumberInput(key string, v float64, min, max, step float64, onChange func(fl
 		if onChange != nil {
 			onChange(clamp(f))
 		}
-	})).Grow(1)
+	})).St(St().W(62).H(FieldH)).Grow(1)
 	row := Row(minus, mid, plus).St(St().GapOf(2).Padding(3).R(10).
 		BgC(ColInput).Stroke(1, ColStroke)).AlignTo(AlignCenter)
 	return row.K(key + "-num")
@@ -724,18 +790,26 @@ func mathRound(v float64, dec int) float64 {
 
 // SearchInput 搜索框：左侧放大镜（矢量方块拼）+ 有内容时右侧清除按钮。
 func SearchInput(key, value, placeholder string, onChange func(string)) *Node {
+	return SearchInputH(key, value, placeholder, FieldH, onChange)
+}
+
+// SearchInputH 指定高度的搜索框（紧凑筛选栏用）。
+func SearchInputH(key, value, placeholder string, h float32, onChange func(string)) *Node {
 	if placeholder == "" {
 		placeholder = "搜索…"
 	}
-	field := Input(key, value, placeholder, onChange)
+	// 左侧给放大镜留出 20px（否则图标会压在文字上），右侧给清除按钮留位置
+	inputLeftPad[key] = 20
+	field := InputH(key, value, placeholder, h, onChange)
 	field.St(St().PadOnly(0, 30, 0, 0))
+	glassY := h/2 - 5
 	glass := Stack(
 		Box().St(St().W(9).H(9).R(5).Stroke(1.6, ColTextMuted).AbsTL(0, 0)),
 		Box().St(St().W(5).H(1.6).R(1).BgC(ColTextMuted).AbsTL(8, 9)),
 	).St(St().W(14).H(12))
-	cells := []*Node{Box(glass).St(St().AbsTL(12, 13)), field}
+	cells := []*Node{Box(glass).St(St().AbsTL(12, glassY)), field}
 	if value != "" {
-		cells = append(cells, Text("×").St(St().Text(14, 500, ColTextMuted).W(22).H(FieldH).
+		cells = append(cells, Text("×").St(St().Text(14, 500, ColTextMuted).W(22).H(h).
 			CenterYOn().TAlign(AlignCenter)).K(key+"-clear").Tap(func() {
 			inputClear(key)
 			if onChange != nil {
@@ -744,7 +818,7 @@ func SearchInput(key, value, placeholder string, onChange func(string)) *Node {
 			RequestRedraw()
 		}).St(St().AbsTR(8, 0)))
 	}
-	return Stack(cells...).St(St().Wp(100).H(FieldH))
+	return Stack(cells...).St(St().Wp(100).H(h))
 }
 
 // inputClear 清空输入框文本与光标（供清空按钮用）。

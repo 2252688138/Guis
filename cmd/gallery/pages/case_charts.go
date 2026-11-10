@@ -1,11 +1,11 @@
-// Go-gui — gallery 页面拆分：图表
+// guis — gallery 页面拆分：图表
 // 本文件属于 pages 包，与其它页面文件一起由 main.go 引入。
 
 package pages
 
 import (
 	"fmt"
-	"gogui/ui"
+	"guis/ui"
 	"math"
 )
 

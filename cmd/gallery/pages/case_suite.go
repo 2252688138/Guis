@@ -1,11 +1,11 @@
-// Go-gui — gallery 页面拆分：组件套件（按类型拆成独立卡片，供分类页组合）
+// guis — gallery 页面拆分：组件套件（按类型拆成独立卡片，供分类页组合）
 // 本文件属于 pages 包，与其它页面文件一起由 main.go 引入。
 
 package pages
 
 import (
 	"fmt"
-	"gogui/ui"
+	"guis/ui"
 	"sync"
 	"time"
 )
@@ -58,7 +58,7 @@ var (
 
 	suiteDoc = suiteInvoice{}
 
-	suiteGridName  = "gogui"
+	suiteGridName  = "guis"
 	suiteGridSize  = "13"
 	suiteGridDark  = true
 	suiteGridTheme = "dark"
@@ -72,7 +72,7 @@ type suiteInvoice struct{}
 func (suiteInvoice) Pages() int { return 2 }
 
 func (suiteInvoice) DrawPage(c *ui.PrintCanvas, page int) {
-	c.Text(64, 64, 22, "GoGUI 打印预览", "#111111")
+	c.Text(64, 64, 22, "GUIS 打印预览", "#111111")
 	c.Line(64, 96, 730, 96, 1, "#cccccc")
 	for i := 0; i < 8; i++ {
 		c.Text(64, 120+float32(i)*40, 14, fmt.Sprintf("第 %d 页 · 第 %d 行示例内容", page+1, i+1), "#333333")
@@ -200,7 +200,7 @@ func suiteInputCard() *ui.Node {
 		ui.Title("高级输入组件", "AutoComplete / TagInput / Rate / RangeSlider / KeyCapture / Time / Cascader / Color / Upload"),
 		ui.Grid(
 			ui.FormItem("自动完成", false, "", ui.AutoComplete(suiteAC,
-				[]string{"Go", "Golang", "GoGUI", "Goroutine", "GraphQL"}, suiteACVal, "输入 G…",
+				[]string{"Go", "Golang", "GUIS", "Goroutine", "GraphQL"}, suiteACVal, "输入 G…",
 				func(v string) { suiteACVal = v })),
 			ui.FormItem("标签输入", false, "", ui.TagInput("suite-tags", suiteTags, "回车添加",
 				func(v []string) { suiteTags = v })),
@@ -271,7 +271,7 @@ func suiteDisplayCard() *ui.Node {
 			ui.Statistic("latency", "平均延迟", 86, ui.StatOptions{Animate: true, Suffix: " ms", Trend: -4.1}),
 		).St(ui.St().ColsN(3).GapOf(16)),
 		ui.Descriptions([]ui.KV{
-			{K: "项目", V: "GoGUI"},
+			{K: "项目", V: "GUIS"},
 			{K: "版本", V: "组件套件"},
 			{K: "渲染", V: "OpenGL / 超采样"},
 			{K: "平台", V: "Windows · Linux · macOS · Web"},

@@ -1,21 +1,26 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
-import "testing"
+import (
+	"testing"
 
-// TestSuperSampleForDPI 自动档：DPI < 150% 走 2×，≥150% 直接 1:1。
+	"guis/internal/text"
+)
+
+// TestSuperSampleForDPI 自动档现在是 1:1（超采样下字形会被降采样发虚、
+// 且一张 2× 离屏目标就是十几 MB）；只有显式选择档位才启用。
 func TestSuperSampleForDPI(t *testing.T) {
 	type c struct {
 		dpi, mode, want float32
 	}
 	cases := []c{
-		{1.0, SSAuto, 2},
-		{1.25, SSAuto, 2},
-		{1.49, SSAuto, 2},
+		{1.0, SSAuto, 1},
+		{1.25, SSAuto, 1},
+		{1.49, SSAuto, 1},
 		{1.5, SSAuto, 1},
 		{2.0, SSAuto, 1},
 		{1.0, SSOff, 1},
@@ -56,6 +61,23 @@ func TestSuperSamplePixelBudget(t *testing.T) {
 		if float64(k.w)*float64(k.h)*float64(got)*float64(got) > ssPixelBudget && got > 1.01 {
 			t.Fatalf("降档后仍超预算：%dx%d × %.2f", k.w, k.h, got)
 		}
+	}
+}
+
+// TestSetTextSharpClamp 文字锐度档位夹取与默认值。
+func TestSetTextSharpClamp(t *testing.T) {
+	defer SetTextSharp(text.SharpClear)
+	SetTextSharp(99)
+	if got := TextSharp(); got != text.SharpMax {
+		t.Fatalf("超上限应夹到 SharpMax，实际 %d", got)
+	}
+	SetTextSharp(-1)
+	if got := TextSharp(); got != text.SharpStandard {
+		t.Fatalf("负档位应夹到 SharpStandard，实际 %d", got)
+	}
+	SetTextSharp(text.SharpClear)
+	if got := TextSharp(); got != text.SharpClear {
+		t.Fatalf("应恢复 SharpClear，实际 %d", got)
 	}
 }
 

@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -113,7 +113,7 @@ func pagerButton(key string, p int, active, locked bool, onPick func(int)) *Node
 	k := "pager:" + key + ":" + strconv.Itoa(p)
 	btn.K(k)
 	if locked {
-		return TooltipOf(btn.DisabledOn(true), "第 "+strconv.Itoa(p)+" 页需要更高权限")
+		return TooltipOf(btn.DisabledOn(true), Ts("ui.pager.pageNoPerm", strconv.Itoa(p)))
 	}
 	if onPick != nil {
 		btn.Tap(func() { onPick(p); RequestRedraw() })

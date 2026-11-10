@@ -1,13 +1,13 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
-	"gogui/internal/geom"
-	"gogui/internal/gpu"
+	"guis/internal/geom"
+	"guis/internal/gpu"
 )
 
 // 子菜单指示三角：用一张预生成的抗锯齿三角形纹理绘制。

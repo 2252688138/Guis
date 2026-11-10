@@ -1,13 +1,13 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
-	"gogui/internal/geom"
-	"gogui/internal/gpu"
+	"guis/internal/geom"
+	"guis/internal/gpu"
 )
 
 // Align 主轴/交叉轴对齐。
@@ -99,6 +99,13 @@ type Style struct {
 	BackdropBlur float32
 	// BackdropTint 毛玻璃上的叠加色
 	BackdropTint gpu.Paint
+
+	// CacheLayer 把该子树首次绘制的结果快照成纹理，内容未变时后续帧直接贴回：
+	// 整棵子树不再产生顶点、不再查字形、不再走 SDF 着色，一次 DrawImage 搞定。
+	// 要求：节点自带**不透明底色**且无圆角 / 描边 / 阴影，子树内无动画、毛玻璃、
+	// 视频、网页、图表、图片（否则不会启用，按普通绘制走）。
+	// 适合：大卡片、长文档块、自绘的复杂控件、滚动后的历史内容。
+	CacheLayer bool
 
 	// Scrollbar 滚动条可见（默认可见）
 	Scrollbar bool
@@ -192,6 +199,11 @@ func (s *Style) Fade(v float32) *Style { s.Opacity = v; return s }
 func (s *Style) Clipped() *Style       { s.Clip = true; return s }
 func (s *Style) ScrollY() *Style       { s.Scrollable = true; return s }
 
+// ScrollbarOn 滚动条常显（不随闲置淡出）。
+// 默认行为是「滚动 / 悬停时出现，闲置后淡出」；长表单、设置页这类需要一眼看出
+// “还有内容未显示”的容器打开它。
+func (s *Style) ScrollbarOn() *Style { s.Scrollbar = true; return s }
+
 // AbsFill 铺满父容器内边距区域。
 func (s *Style) AbsFill() *Style {
 	s.PosAbs = true
@@ -257,14 +269,25 @@ func (s *Style) AnimOn() *Style { s.Animated = true; return s }
 // 交互与 Tween 动画仍走高帧率；只有纯装饰动画降频。
 func (s *Style) AnimSlowOn() *Style { s.Animated, s.AnimSlow = true, true; return s }
 
+// CacheOn 开启组件栅格缓存：子树首次绘制后快照成纹理，内容未变时后续帧直接贴回。
+//
+// 适用：自带不透明背景、无圆角/描边/阴影、内容稳定的重负载子树（大卡片、长文档块、
+// 自绘的复杂控件）。子树内有动画 / 毛玻璃 / 视频 / 网页 / 图表 / 图片时不会启用，
+// 仍按普通绘制走——写错只是没效果，不会画错。
+func (s *Style) CacheOn() *Style { s.CacheLayer = true; return s }
+
 // NoFocusRing 关闭统一焦点环（自绘焦点样式的控件用）。
 func (s *Style) NoFocusRing() *Style { s.NoRing = true; return s }
 
 // Translate 绘制期位移（不参与布局，FLIP / 拖拽跟手用）。
 func (s *Style) Translate(x, y float32) *Style { s.DrawX, s.DrawY = x, y; return s }
 
-// merge 覆盖默认样式（零值字段不覆盖）。
-func (s Style) merge(o Style) Style {
+// merge 用指针接收者就地覆盖默认样式（零值字段不覆盖）。
+//
+// Style 约 280 字节，旧的值语义版本每次调用要拷三份（接收者 / 参数 / 返回值），
+// 而它是链式 St() 的热路径（每帧每个带样式的节点一次）。改为指针后不再拷贝，
+// 且 St() 返回的临时 *Style 不再需逃逸分析保留，堆分配可随之消失。
+func (s *Style) merge(o *Style) {
 	if o.Width != 0 {
 		s.Width = o.Width
 	}
@@ -415,5 +438,7 @@ func (s Style) merge(o Style) Style {
 	if o.DrawY != 0 {
 		s.DrawY = o.DrawY
 	}
-	return s
+	if o.CacheLayer {
+		s.CacheLayer = true
+	}
 }

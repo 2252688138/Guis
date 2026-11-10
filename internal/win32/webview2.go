@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
@@ -118,7 +118,7 @@ func wvLoaderCandidates() []string {
 			out = append(out, p)
 		}
 	}
-	add(os.Getenv("GOGUI_WEBVIEW2_LOADER"))
+	add(os.Getenv("GUIS_WEBVIEW2_LOADER"))
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
 		add(filepath.Join(dir, "WebView2Loader.dll"))
@@ -148,7 +148,7 @@ func wvLoad() error {
 			}
 		}
 		if lib == 0 {
-			// 兵底：把内嵌的 Loader 释放到 %LOCALAPPDATA%\GoGUI\WebView2Loader 再加载
+			// 兵底：把内嵌的 Loader 释放到 %LOCALAPPDATA%\GUIS\WebView2Loader 再加载
 			if p, err := extractLoaderDLL(); err == nil {
 				if h, err2 := syscall.LoadLibrary(p); err2 == nil {
 					lib = uintptr(h)
@@ -157,7 +157,7 @@ func wvLoad() error {
 			}
 		}
 		if lib == 0 {
-			wvLibErr = errors.New("WebView2Loader.dll 加载失败（可设置 GOGUI_WEBVIEW2_LOADER 指定路径）")
+			wvLibErr = errors.New("WebView2Loader.dll 加载失败（可设置 GUIS_WEBVIEW2_LOADER 指定路径）")
 			return
 		}
 		purego.RegisterLibFunc(&wvCreateEnvFn, lib, "CreateCoreWebView2EnvironmentWithOptions")
@@ -170,7 +170,7 @@ func wvLoad() error {
 	return wvLibErr
 }
 
-// extractLoaderDLL 把内嵌的 WebView2Loader.dll 释放到 %LOCALAPPDATA%\GoGUI\WebView2Loader\，
+// extractLoaderDLL 把内嵌的 WebView2Loader.dll 释放到 %LOCALAPPDATA%\GUIS\WebView2Loader\，
 // 文件名带大小，已存在同尺寸文件时直接复用（不需要管理员权限）。
 func extractLoaderDLL() (string, error) {
 	if len(wvLoaderDLL) == 0 {
@@ -180,7 +180,7 @@ func extractLoaderDLL() (string, error) {
 	if base == "" {
 		base = os.TempDir()
 	}
-	dir := filepath.Join(base, "GoGUI", "WebView2Loader")
+	dir := filepath.Join(base, "GUIS", "WebView2Loader")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -299,7 +299,7 @@ type WebView2Options struct {
 	URL string
 	// HTML 直接加载一段 HTML（离线页面、模板）。
 	HTML string
-	// UserDataDir 用户数据目录（cookie / 缓存）；空 = %LOCALAPPDATA%\GoGUI\WebView2。
+	// UserDataDir 用户数据目录（cookie / 缓存）；空 = %LOCALAPPDATA%\GUIS\WebView2。
 	UserDataDir string
 	// Zoom 初始缩放（1 = 100%，通过注入 CSS zoom 实现）。
 	Zoom float64
@@ -389,7 +389,7 @@ func defaultUserDataDir() string {
 	if base == "" {
 		base = os.TempDir()
 	}
-	return filepath.Join(base, "GoGUI", "WebView2")
+	return filepath.Join(base, "GUIS", "WebView2")
 }
 
 // wvEnsureEnv 启动（或复用）浏览器环境；完成后自动处理排队的创建请求。
@@ -953,23 +953,40 @@ var (
 	procDeleteObj = user32Lazy.NewProc("DeleteObject")
 )
 
+// 子窗口枚举回调只创建一次：purego.NewCallback 每次都映射一块可执行内存、
+// 且没有释放接口，旧实现每次 findInnerWindow 都新建，窗口反复缩放会持续泄漏。
+// 结果经包级变量回传（EnumChildWindows 同步调用，回调在本线程执行）。
+var (
+	innerFindCBOnce sync.Once
+	innerFindCB     uintptr
+	innerFindMu     sync.Mutex
+	innerFound      uintptr
+)
+
+// findInnerCallback EnumChildWindows 的回调（进程内唯一）。
+func findInnerCallback(hwnd, lparam uintptr) uintptr {
+	var buf [128]uint16
+	n, _, _ := procGetClass.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	if n > 0 {
+		name := syscall.UTF16ToString(buf[:n])
+		if strings.Contains(strings.ToLower(name), "chrome_widgetwin") {
+			innerFound = hwnd
+			return 0 // 停止枚举
+		}
+	}
+	return 1
+}
+
 // findInnerWindow 在宿主窗口里找 Chromium 的绘图子窗口（类名含 Chrome_WidgetWin）。
 func findInnerWindow(parent uintptr) uintptr {
-	var found uintptr
-	cb := purego.NewCallback(func(hwnd, lparam uintptr) uintptr {
-		var buf [128]uint16
-		n, _, _ := procGetClass.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
-		if n > 0 {
-			name := syscall.UTF16ToString(buf[:n])
-			if strings.Contains(strings.ToLower(name), "chrome_widgetwin") {
-				found = hwnd
-				return 0 // 停止枚举
-			}
-		}
-		return 1
+	innerFindCBOnce.Do(func() {
+		innerFindCB = purego.NewCallback(findInnerCallback)
 	})
-	procEnumChild.Call(parent, cb, 0)
-	return found
+	innerFindMu.Lock()
+	defer innerFindMu.Unlock()
+	innerFound = 0
+	procEnumChild.Call(parent, innerFindCB, 0)
+	return innerFound
 }
 
 // SetRoundedRegion 让网页窗口按圆角区域裁剪（radius <= 0 取消裁剪）。

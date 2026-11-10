@@ -1,10 +1,10 @@
-// Go-gui — gallery 页面拆分：设置页（主题 / 缩放 / 清晰度）
+// guis — gallery 页面拆分：设置页（主题 / 缩放 / 清晰度）
 // 本文件属于 pages 包，与其它页面文件一起由 main.go 引入。
 
 package pages
 
 import (
-	"gogui/ui"
+	"guis/ui"
 	"strconv"
 )
 
@@ -60,6 +60,14 @@ func settingsCase() *ui.Node {
 				ui.Radio("th-light", "浅色", Theme == "浅色", func() { SetTheme("浅色") }),
 				ui.Radio("th-auto", "跟随系统", Theme == "跟随系统", func() { SetTheme("跟随系统") }),
 			).St(ui.St().GapOf(22)),
+			ui.Divider(),
+			ui.Row(
+				ui.Text("语言").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(70)),
+				ui.LocaleSwitcher("set-lang"),
+				ui.Text(ui.Locale()).St(ui.St().Text(11.5, 500, "#a5b4fc")),
+			).St(ui.St().GapOf(14)).AlignTo(ui.AlignCenter),
+			ui.Text("内置中文 / English；切换后界面文案、日期与数字格式、RTL 方向都会跟着变（选择写入偏好 ui.locale）。").
+				St(ui.St().Text(11.5, 400, ui.ColTextMuted)),
 			ui.Divider(),
 			ui.Row(
 				ui.Text("界面缩放").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(70)),

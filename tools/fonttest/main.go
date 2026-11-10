@@ -5,14 +5,14 @@ package main
 import (
 	"fmt"
 
-	"gogui/internal/text"
+	"guis/internal/text"
 )
 
 func main() {
 	f := text.NewFont("Microsoft YaHei UI", 14, 400, 1.0)
 	fmt.Printf("Ascent=%.2f Descent=%.2f LineHeight=%.2f scale=%.2f\n", f.Ascent, f.Descent, f.LineHeight, f.Scale())
 
-	for _, s := range []string{"G", "o", "仪", "表", "盘", "GoGUI", "仪表盘"} {
+	for _, s := range []string{"G", "o", "仪", "表", "盘", "GUIS", "仪表盘"} {
 		rs := []rune(s)
 		fmt.Printf("\n%q measure=%.2f runes=%d\n", s, f.Measure(s), len(rs))
 		for _, r := range rs {

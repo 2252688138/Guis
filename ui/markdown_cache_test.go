@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -87,7 +87,7 @@ func BenchmarkMarkdownRebuild(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		mdTreeCache = map[mdTreeKey][]*Node{}
+		mdTreeCacheClear()
 		_ = Markdown("mdk", mdTestDoc, MarkdownOptions{Width: 720})
 	}
 }

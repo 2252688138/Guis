@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -10,8 +10,8 @@ import (
 	"os"
 	"strconv"
 
-	"gogui/internal/geom"
-	"gogui/internal/text"
+	"guis/internal/geom"
+	"guis/internal/text"
 )
 
 // Constraints 约束模型（Flutter 风格）。
@@ -27,10 +27,36 @@ func (c Constraints) loosen() Constraints {
 var (
 	viewportW float32 = 1180
 	viewportH float32 = 760
+	// viewportInited 是否已灌入真实窗口尺寸。
+	//
+	// 首帧的 view() 早于 Layout 执行（先建树再排版），此时视口还是默认值 1180,
+	// 手机竖屏会先按桌面宽屏画一帧再跳变。newApp 建好窗口后用 SetViewport
+	// 先填一次真实尺寸，之后以 Layout 的实测值为准。
+	viewportInited bool
 )
+
+// SetViewport 用窗口逻辑尺寸初始化视口（供 newApp 在首帧构建 view 之前调用）。
+//
+// 已有真实布局后调用会被忽略：多窗口时不能拿新窗口尺寸去覆盖已布局好的窗口。
+func SetViewport(w, h float32) {
+	if viewportInited || w <= 0 || h <= 0 {
+		return
+	}
+	viewportW, viewportH = w, h
+}
 
 // ViewportW 返回最近一次布局的视口宽度（逻辑像素），用于响应式分支。
 func ViewportW() float32 { return viewportW }
+
+// PixelScale 当前窗口的物理像素比（100% = 1）。位图资源按它解码后 1:1 贴图才不发虚。
+func PixelScale() float32 {
+	if a := currentApp.Load(); a != nil && a.win != nil {
+		if s := a.win.Scale(); s > 0 {
+			return s
+		}
+	}
+	return 1
+}
 
 // ViewportH 返回最近一次布局的视口高度（逻辑像素）。
 func ViewportH() float32 { return viewportH }
@@ -56,6 +82,12 @@ type layoutCtx struct {
 }
 
 func (lc *layoutCtx) measure(n *Node, maxW float32) (float32, float32) {
+	return lc.measureText(n, maxW, n.Style.Wrap)
+}
+
+// measureText 计算文本尺寸；wrap 为 true 时按 maxW 折行并把折行宽度记到 n.wrapW
+// （绘制阶段复用同一宽度，保证行数与位置一致）。
+func (lc *layoutCtx) measureText(n *Node, maxW float32, wrap bool) (float32, float32) {
 	f := lc.fonts.getFamily(n.Style.FontSize, n.Style.FontWeight, n.Style.FontFamily)
 	if f == nil {
 		return 0, 0
@@ -66,7 +98,7 @@ func (lc *layoutCtx) measure(n *Node, maxW float32) (float32, float32) {
 	}
 	// WrapOn：按可用宽度折行（与绘制共用折行缓存），高度 = 行数 × 行高。
 	// 结果来自 wrapLinesCached，同一段落在测量/绘制之间只算一次。
-	if n.Style.Wrap && maxW > 0 {
+	if wrap && maxW > 0 {
 		n.wrapW = maxW
 		lines := wrapLinesCached(f, n.Text, maxW)
 		var w float32
@@ -90,15 +122,25 @@ func (lc *layoutCtx) measure(n *Node, maxW float32) (float32, float32) {
 // Layout 对整棵树做布局：先 measure（算尺寸），再 arrange（定位）。
 func Layout(root *Node, w, h float32, fonts *fontCache) {
 	viewportW, viewportH = w, h
+	viewportInited = true
 	lc := &layoutCtx{fonts: fonts, viewportH: h}
 	if fonts != nil {
 		// 帧号用于“本帧用到的字体不淘汰”（见 fontCache.evictOldest）
 		fonts.frame++
 	}
+	// 上一帧可能已经把某些字体的图集扩容到了预算以上（图集是按需扩容的），
+	// 在开始本帧取用前先回收一次：本帧未用到的旧字体优先。
+	if fonts != nil {
+		fonts.enforceAtlasBudget()
+	}
 	root.Frame = geom.Rect{X: 0, Y: 0, W: w, H: h}
 	measureNode(lc, root, Constraints{0, w, 0, h}, nil)
 	root.Frame.W, root.Frame.H = w, h
 	arrange(lc, root)
+	// RTL：布局按 LTR 摆好之后整体水平镜像一次（见 ui/i18n_rtl.go）。
+	if IsRTL() {
+		mirrorTree(root)
+	}
 }
 
 // arrange 递归定位（父节点位置已确定）。
@@ -166,6 +208,13 @@ func measureNode(lc *layoutCtx, n *Node, c Constraints, parent *Node) {
 			contentW, contentH = lc.measure(n, innerMaxW)
 		} else {
 			contentW, contentH = lc.measure(n, 0)
+			// 自动换行：纵向流容器（Column / Box / Scroll / Stack / Grid）里的文本
+			// 一旦自然宽度超出可用宽度就折行——窄屏手机上大量说明文案原本会直接
+			// 溢出被裁掉。横向容器（Row / Wrap 里的页签、按钮、表格单元格）不动，
+			// 单行控件不会被撑成两行。
+			if parent != nil && parent.Dir == Vertical && innerMaxW > 0 && contentW > innerMaxW+0.5 {
+				contentW, contentH = lc.measureText(n, innerMaxW, true)
+			}
 		}
 		if st.Width > 0 || st.WidthPct > 0 {
 			contentW = innerMaxW
@@ -186,8 +235,34 @@ func measureNode(lc *layoutCtx, n *Node, c Constraints, parent *Node) {
 			contentW = innerMaxW
 		}
 
+	case KCodeEditor:
+		// 代码编辑器：尺寸由 Style 决定（自绘控件无子节点，高度不显式给会塔陷为 0），
+		// 未指定时用组件的最小可用尺寸。
+		contentW, contentH = 560, 320
+		if e := n.Code; e != nil {
+			if e.MinW > 0 {
+				contentW = e.MinW
+			}
+			if e.MinH > 0 {
+				contentH = e.MinH
+			}
+		}
+	case KTerm:
+		// 伪终端：与代码编辑器一样是自绘控件，默认最小尺寸来自状态。
+		contentW, contentH = 560, 320
+		if t := n.Term; t != nil {
+			t.ensure()
+			if t.MinW > 0 {
+				contentW = t.MinW
+			}
+			if t.MinH > 0 {
+				contentH = t.MinH
+			}
+		}
+	case KIcon:
+		// 图标：未显式给尺寸时按 18×18 绘制（IconSized 会显式设置，这里只是兜底）。
+		contentW, contentH = 18, 18
 	case KImage:
-		// 图片：默认取原图像素尺寸，可用 Style.Width/Height 覆盖
 		w0, h0 := ImageSize(n.Src)
 		contentW, contentH = float32(w0), float32(h0)
 		if contentW <= 0 {
@@ -1060,19 +1135,31 @@ const (
 	// 套件页约 20+ 种）。上限太低会每帧淘汰重建字体（字形重栅格化，CPU 吃满）。
 	maxFonts     = 32
 	maxFontsHard = 64
-	// 每个字体自带字形图集（RGBA，懒分配），所以不能只限数量：
-	// 再加一条「图集总字节预算」，超了先淘汰本帧没用到的旧字体。
-	fontAtlasBudget = 24 << 20
-	// idleKeepFonts 深度空闲（最小化 / 长期不在前台）时保留的字体数。
-	idleKeepFonts = 10
+	// 字体自带字形图集（R8，懒分配），所以不能只限数量：
+	// 再加一条「图集总字节预算」（见下方 fontAtlasBudget）。
+	// 注意：图集是**创建后按需扩容**的，所以只在新建字体时查预算不够，
+	// 每帧开头还要再查一次（见 fontCache.enforceAtlasBudget）。
+	// idleKeepFonts 空闲（3s 无绘制）时保留的字体数：
+	// 字体图集 Go 堆与显存各占一份，闲置时没必要留 30 多个。
+	idleKeepFonts = 16
+	// idleKeepFontsDeep 深度空闲（最小化 / 长期不在前台）时保留的字体数。
+	idleKeepFontsDeep = 6
 )
+
+// fontAtlasBudget 字形图集总字节预算。
+//
+// R8 后单字体哪怕写满 1024² 也只有 1MB（旧 RGBA8 是 4MB），
+// 6MB 够放 6 张写满的图集或几十张 256² 小图集，一屏 UI 远用不到这么多。
+// 做成变量而不是常量：单测可以调小它来验证「超预算回收」路径，
+// 不必真的堆到 6MB 图集（既慢又吃内存）。
+var fontAtlasBudget = 6 << 20
 
 // maxFontsLimit 字体缓存软上限（默认 maxFonts）。
 // 内存吃紧的机器可以用环境变量调小（代价是字号多的大页面会重新栅格化）：
 //
-//	GOGUI_FONT_MAX=16
+//	GUIS_FONT_MAX=16
 var maxFontsLimit = func() int {
-	if v := os.Getenv("GOGUI_FONT_MAX"); v != "" {
+	if v := os.Getenv("GUIS_FONT_MAX"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 8 {
 			return n
 		}
@@ -1089,11 +1176,27 @@ func (fc *fontCache) atlasTotal() int {
 	return n
 }
 
+// trimIdle 空闲回收：本轮没有任何绘制，把 LRU 帧号推进一步后淘汰到 keep 个字体。
+//
+// 旧实现直接 trimTo，但“本帧在用（used >= frame）”的段时间保护在空闲时永远成立，
+// 于是一个字体也淘汰不掉（空闲回收形同虚设）。
+func (fc *fontCache) trimIdle(keep int) {
+	if fc == nil || len(fc.fonts) <= keep {
+		return
+	}
+	fc.frame++
+	fc.trimTo(keep)
+}
+
 // trimTo 只保留最近使用的 keep 个字体（空闲降内存用）。
+//
+// 会把 frame 推进一步：本轮没有任何绘制，"本帧在用"的段时间保护已经没有意义，
+// 旧实现因此一个字体也淘汰不掉（空闲 trimTo 形同虚设）。
 func (fc *fontCache) trimTo(keep int) {
 	if keep < 1 {
 		keep = 1
 	}
+	fc.frame++
 	for len(fc.fonts) > keep {
 		before := len(fc.fonts)
 		fc.evictOldest()
@@ -1135,29 +1238,37 @@ func (fc *fontCache) getFamily(size float32, weight int32, family string) *text.
 	if face == "" {
 		face = fc.face
 	}
-	// 字号量化到 0.5px：11.5/12 这类视觉无差别的近邻字号共用同一字体，
-	// 能显著减少「字号×字重」组合数（套件页从 40+ 降到干 20+）。
-	key := fontKey{face, int16(math.Round(float64(size)*2)), weight}
-	fc.tick++
+	// 字号量化到 1px：12.4/11.8 这类视觉无差别的近邻字号共用同一字体。
+	// 旧实现量化到 0.5px，套件页因此要建 30+ 个字体实例，而每个字体自带
+	// 一张字形图集（Go 堆 + 显存各一份），这是常驻内存的大头。
+	key := fontKey{face, int16(math.Round(float64(size))), weight}
 	if f, ok := fc.fonts[key]; ok {
-		fc.age[key] = fc.tick
-		fc.used[key] = fc.frame
+		// 本帧已经用过：不再更新 tick / age。
+		// 旧写法每次命中都要写两次 map（age/used），而布局与绘制每帧对每个
+		// 文本节点各查一次字体，一屏上百个节点就是几百次无意义的写入。
+		if fc.used[key] != fc.frame {
+			fc.tick++
+			fc.age[key] = fc.tick
+			fc.used[key] = fc.frame
+		}
 		return f
 	}
 	if len(fc.fonts) >= maxFontsLimit || fc.atlasTotal() >= fontAtlasBudget {
 		fc.evictOldest()
 	}
-	f := text.NewFont(face, size, weight, fc.scale)
+	f := text.NewFont(face, float32(key.size), weight, fc.scale)
 	fc.fonts[key] = f
+	fc.tick++
 	fc.age[key] = fc.tick
 	fc.used[key] = fc.frame
 	return f
 }
 
 // evictOldest 回收最久未使用的字体（同时释放其图集纹理）。
+// 返回是否真的回收了一个（无可回收时 false）。
 // 本帧正在使用的字体（used == frame）一律跳过：否则一屏用 40+ 种字号时，
 // 每次取值都会把刚用过的字体踢掉，下一帧再重建，落入“淘汰-重建”死循环。
-func (fc *fontCache) evictOldest() {
+func (fc *fontCache) evictOldest() bool {
 	var oldKey fontKey
 	var oldest uint64
 	found := false
@@ -1172,7 +1283,7 @@ func (fc *fontCache) evictOldest() {
 	if !found {
 		// 本帧全部在用：软上限之内允许临时超限，超过硬上限再按 age 强淘汰
 		if len(fc.fonts) < maxFontsHard {
-			return
+			return false
 		}
 		for k, t := range fc.age {
 			if !found || t < oldest {
@@ -1181,7 +1292,7 @@ func (fc *fontCache) evictOldest() {
 		}
 	}
 	if !found {
-		return
+		return false
 	}
 	if f, ok := fc.fonts[oldKey]; ok {
 		if fc.onEvict != nil {
@@ -1192,7 +1303,67 @@ func (fc *fontCache) evictOldest() {
 	}
 	delete(fc.age, oldKey)
 	delete(fc.used, oldKey)
-	// 折行缓存以 *Font 为键，字体已关闭必须整体失效，否则缓存会拖住字体与图集
+	return true
+	// 折行缓存的键里带字体代次，旧条目不会再命中；交给预算淘汰即可。
+	// 旧实现在这里清空**全局**折行缓存：字体紧张时每帧淘汰一个字体，
+	// 就等于每帧把整页文本重新折行一遍（这也是「字多就卡」的主要来源之一）。
+}
+
+// enforceAtlasBudget 每帧开头核一次图集总预算。
+//
+// 图集是创建后按需扩容的（256²→512²→1024²，超高清到 2048²），
+// 旧实现在新建字体时查一次 atlasTotal() 形同虚设——字体建好后图集再涨没人管，
+// 32 个实例各自长到 1MB 就是 32MB。这里超出预算就按「最久未用」回收，
+// 但**上一帧与本帧在用**的字体一律不动：否则一屏真需要多张图集时
+// 会陷入「淘汰→重栅格化→再淘汰」的抖动（比超预算更伤帧率）。
+func (fc *fontCache) enforceAtlasBudget() {
+	if fc == nil || len(fc.fonts) == 0 {
+		return
+	}
+	if fc.atlasTotal() <= fontAtlasBudget {
+		return
+	}
+	protect := fc.frame
+	if protect > 0 {
+		protect-- // 上一帧用到的留下，防止刚建好就被淘汰
+	}
+	for fc.atlasTotal() > fontAtlasBudget {
+		var oldKey fontKey
+		var oldest uint64
+		found := false
+		for k, t := range fc.age {
+			if fc.used[k] >= protect {
+				continue
+			}
+			if !found || t < oldest {
+				oldKey, oldest, found = k, t, true
+			}
+		}
+		if !found {
+			return // 剩下的全是活跃字体：宁可临时超预算，也不展开抖动
+		}
+		if f, ok := fc.fonts[oldKey]; ok {
+			if fc.onEvict != nil {
+				fc.onEvict(f)
+			}
+			f.Close()
+			delete(fc.fonts, oldKey)
+		}
+		delete(fc.age, oldKey)
+		delete(fc.used, oldKey)
+	}
+}
+
+// setSharp 文字锐度档位变化：所有字体按新 hinting 重建 face 并清空图集。
+//
+// 字形位图变了，按字体缓存的折行结果一并失效（hinting 会改变 advance 宽度）。
+func (fc *fontCache) setSharp(level int) {
+	if fc == nil {
+		return
+	}
+	for _, f := range fc.fonts {
+		f.RebuildSharp()
+	}
 	clearWrapMemo()
 }
 
@@ -1214,6 +1385,21 @@ func (fc *fontCache) close() {
 	}
 	fc.fonts = map[fontKey]*text.Font{}
 	fc.age = map[fontKey]uint64{}
+	clearWrapMemo()
+}
+
+// reset 丢弃全部字体实例并清空折行缓存：Web 端注入/替换字体数据后重建用。
+// 每个字体先过 onEvict（释放 GPU 字形图集纹理），再 Close。
+func (fc *fontCache) reset() {
+	for k, f := range fc.fonts {
+		if fc.onEvict != nil {
+			fc.onEvict(f)
+		}
+		f.Close()
+		delete(fc.fonts, k)
+	}
+	fc.age = map[fontKey]uint64{}
+	fc.used = map[fontKey]uint64{}
 	clearWrapMemo()
 }
 

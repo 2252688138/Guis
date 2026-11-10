@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -11,7 +11,8 @@ import (
 	"strconv"
 	"sync"
 
-	"gogui/internal/gpu"
+	"guis/internal/gpu"
+	"guis/internal/text"
 )
 
 // 界面缩放（整体 UI zoom）：
@@ -26,13 +27,15 @@ import (
 // 逻辑坐标、布局、命中测试完全不变，只有渲染分辨率变化。
 //
 // 降采样会轻微压低 1px 级细节的对比度（主观上“软”），因此 resolve 阶段
-// 额外做一道轻度锐化（gpu.ssaaSharpen，可用 GOGUI_SS_SHARPEN 调节）。
+// 额外做一道轻度锐化（gpu.ssaaSharpen，可用 GUIS_SS_SHARPEN 调节）。
 
 var uiScale float32 = 1
 
 const (
 	UIScaleMin float32 = 0.6
-	UIScaleMax float32 = 1.5
+	// UIScaleMax 上限 250%：移动端按物理像素布局，1080p 手机要把 13px 正文放大到
+	// ≈29 物理像素（≈ 9.7dp）才看得清，150% 明显不够；桌面端只是放宽了可调范围。
+	UIScaleMax float32 = 2.5
 )
 
 // 超高清（整帧超采样）档位：SSAuto = 自动，SSOff = 关闭，其余为显式倍数。
@@ -54,14 +57,33 @@ const ssPixelBudget = 4096 * 2304
 // ssMode 超采样档位设置（SSAuto = 跟随 DPI 自动）。
 var ssMode float32 = SSAuto
 
-// init 允许用环境变量 GOGUI_SS 指定启动档位（0=自动 1=标准 1.25 1.5 2），
+// textSharp 文字锐度档位（text.SharpStandard / text.SharpClear / text.SharpMax）。
+//
+// 档位同时决定字形光栅化是否 hinting（text 包）与覆盖率 gamma（渲染器），
+// 因此必须与 gpu.TextGammaForLevel 保持一致。默认「清晰」：
+// 小字号中文在 HintingNone 下横竖笔会被抗锯齿抹成半透明灰边，明显发虚。
+var textSharp = text.SharpClear
+
+// init 允许用环境变量 GUIS_SS 指定启动档位（0=自动 1=标准 1.25 1.5 2），
 // 便于命令行 / 自动化对比不同清晰度下的画面，不影响正常启动（未设置时走自动）。
 func init() {
-	if v := os.Getenv("GOGUI_SS"); v != "" {
+	if v := os.Getenv("GUIS_SS"); v != "" {
 		if f, err := strconv.ParseFloat(v, 32); err == nil && f >= 0 && f <= 2 {
 			ssMode = float32(f)
 		}
 	}
+	if v := os.Getenv("GUIS_TEXT_SHARP"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			if n < text.SharpStandard {
+				n = text.SharpStandard
+			}
+			if n > text.SharpMax {
+				n = text.SharpMax
+			}
+			textSharp = n
+		}
+	}
+	text.SetSharp(textSharp)
 }
 
 // UIScale 当前界面缩放（1 = 100%）。
@@ -108,6 +130,48 @@ func SetSuperSample(k float32) {
 // SuperSampleMode 返回当前档位设置（SSAuto 表示跟随 DPI 自动）。
 func SuperSampleMode() float32 { return ssMode }
 
+// SetTextSharp 设置文字锐度档位（0 标准 / 1 清晰 / 2 极致），立即重建字形并重绘。
+//
+// 标准 = 旧行为（无 hinting，gamma 0.55）；清晰 = 小字号笔画对齐像素 + gamma 0.5；
+// 极致 = 全字号 hinting + gamma 0.42。切档会重建全部字形图集，
+// 首帧多花几毫秒重新栅格化，因此只应在设置变更时调用。
+func SetTextSharp(level int) {
+	if level < text.SharpStandard {
+		level = text.SharpStandard
+	}
+	if level > text.SharpMax {
+		level = text.SharpMax
+	}
+	if level == textSharp {
+		return
+	}
+	textSharp = level
+	text.SetSharp(level)
+	gamma := gpu.TextGammaForLevel(level)
+	for _, a := range snapshotApps() {
+		a.applyTextSharp(gamma)
+	}
+	RequestRedraw()
+}
+
+// TextSharp 当前文字锐度档位。
+func TextSharp() int { return textSharp }
+
+// applyTextSharp 应用新的锐度设置：重建字形、丢掉栅格快照（里面是旧字形的位图）。
+func (a *App) applyTextSharp(gamma float32) {
+	if a == nil || a.win == nil || a.r == nil {
+		return
+	}
+	a.win.MakeCurrent()
+	a.r.SetTextGamma(gamma)
+	if a.fonts != nil {
+		a.fonts.setSharp(textSharp)
+	}
+	// 组件栅格缓存里是旧字形的位图，不丢会继续显示发虚的旧字
+	a.layerReleaseAll()
+	a.dirty = true
+}
+
 // SuperSample 返回当前窗口实际生效的超采样倍数（含 DPI 自动判定，不含像素预算降档）。
 func SuperSample() float32 {
 	dpi := float32(1)
@@ -131,27 +195,25 @@ func rendererIsSoftware() bool {
 	softOnce.Do(func() {
 		softGL = gpu.SoftwareRenderer()
 		if softGL {
-			fmt.Fprintf(os.Stderr, "[gogui] 检测到软件渲染（%s）：自动档已关闭整帧超采样，避免全屏时慢到像黑屏。\n", gpu.RendererName())
+			fmt.Fprintf(os.Stderr, "[guis] 检测到软件渲染（%s）：自动档已关闭整帧超采样，避免全屏时慢到像黑屏。\n", gpu.RendererName())
 		}
 	})
 	return softGL
 }
 
 // superSampleFor 按 DPI 与档位算出超采样倍数。
-// 自动档：DPI < 150% 时窗口像素本身比较粗（逻辑 1px 只对应 1~1.25 物理像素），
-// 走 2× 超采样收益最大；150% 以上逻辑像素已对应 1.5+ 物理像素，1:1 绘制就足够清晰。
 //
-// 例外：软件渲染（WSLg 的 llvmpipe、无显卡驱动环境）自动档一律 1:1——
-// 超采样在这里是纯 CPU 负担，全屏会导致「黑屏」观感；用户显式指定档位时仍然尊重。
+// 自动档（SSAuto）现在是 1:1，不再按 DPI 自动开 2×：
+//   - 内存：一张 2× 离屏目标 = 窗口像素 × 4 × 4B（1166×746 窗口就 13.7MB），
+//     是渲染侧最大的单项常驻开销；
+//   - 清晰度：字形本来就按物理像素光栅化，再经 resolve 的 4×4 box 降采样
+//     反而把 1px 笔画平均成半透明（实测 16px 汉字「实心像素占比」减半），
+//     1:1 直出才是浏览器级锐利度；圆角/描边仍由 SDF feather 做单像素抗锯齿。
+//
+// 想要整帧超采样请在设置里显式选择档位（SS125/SS150/SS200），此时按原逻辑生效。
 func superSampleFor(dpiScale, mode float32) float32 {
-	if mode <= 0 && rendererIsSoftware() {
-		return 1
-	}
 	if mode <= 0 {
-		if dpiScale >= 1.5 {
-			return 1
-		}
-		return 2
+		return 1
 	}
 	if mode < 1 {
 		return 1
@@ -234,6 +296,8 @@ func (a *App) applyRenderScale() {
 	pw, ph, scale, ss := a.renderSize()
 	a.r.SetSuperSample(ss)
 	a.r.Resize(pw, ph, scale)
+	// 缩放变了几何全变，快照纹理全部失效（不丢会在新倍率下被拉伸发糊）
+	a.layerReleaseAll()
 	if a.fonts != nil {
 		a.fonts.setScale(scale)
 	}

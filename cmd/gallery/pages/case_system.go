@@ -1,14 +1,20 @@
-// Go-gui — gallery 页面拆分：系统能力
+// guis — gallery 页面拆分：系统能力
 // 本文件属于 pages 包，与其它页面文件一起由 main.go 引入。
 
 package pages
 
 import (
 	"fmt"
-	"gogui/ui"
+	"guis/ui"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+	"bytes"
+	"encoding/base64"
+	"image"
+	"image/png"
+	"os"
 )
 
 // ---- 系统能力演示：图片 / 毛玻璃 / Emoji / 动画 / 滚动条 / IME / 多窗口 ----
@@ -30,7 +36,91 @@ var (
 	sysHotkeyID   int32
 	sysWakeLock   bool
 	sysHotkeyNote = "未注册"
+
+	// 系统级操作（标准目录 / 文件监听 / 原生消息框 / 系统信息 / 任务栏）
+	sysKnownDirText = ""
+	sysWatchMsg     = "未开启监听（监听目录内的增删改会实时出现在这里）"
+	sysWatchStop    func()
+	sysSysInfoText  = ""
+	sysTaskbarN     = 0
+	sysOpacityOn    bool
+	sysClickThruOn  bool
+
+	// 文件图标 / 拖出 / 键鼠模拟 / 音量 / 联网 / 快捷方式演示状态
+	sysIconURL   string
+	sysThumbURL  string
+	sysIconType  string
+	sysDragFile  string
+	sysDragMsg   = "先点「准备文件」，再按住拖出按钮拖到资源管理器"
+	sysInputMsg  = "把光标放到记事本等输入框，点按钮后 3 秒自动输入"
+	sysVolMsg    = ""
+	sysNetMsg    = "未检测"
+	sysLinkMsg   = ""
 )
+
+// sysImageURL 把 *image.NRGBA 编成 data URL（ui.Image 支持路径与 data: 两种数据源）。
+func sysImageURL(img *image.NRGBA) string {
+	if img == nil {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return ""
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+}
+
+// sysIconPreview 文件图标预览（未选文件时给一个同尺寸占位，保证行高稳定）。
+func sysIconPreview() *ui.Node {
+	if sysIconURL == "" {
+		return ui.Box().St(ui.St().W(32).H(32).R(6).BgC(ui.ColBgSoft))
+	}
+	return ui.ImageSized(sysIconURL, 32, 32)
+}
+
+// sysThumbPreview 缩略图预览。
+func sysThumbPreview() *ui.Node {
+	if sysThumbURL == "" {
+		return ui.Box().St(ui.St().W(64).H(64).R(8).BgC(ui.ColBgSoft))
+	}
+	return ui.ImageSized(sysThumbURL, 64, 64).St(ui.St().R(8))
+}
+
+// sysDragButton 拖出按钮。
+//
+// 必须在「按下」时启动 OLE 拖放：DoDragDrop 会捕获鼠标并进入自己的消息循环，
+// 若等松手再调用，鼠标已经抬起，拖放会立即结束（表现为「点了没反应」）。
+func sysDragButton() *ui.Node {
+	n := ui.Btn("按住拖出 →", ui.BtnSecondary, func() {})
+	n.OnPress = func() {
+		if sysDragFile == "" {
+			sysDragMsg = "先点「准备文件」"
+			ui.RequestRedraw()
+			return
+		}
+		if err := ui.DragFiles([]string{sysDragFile}, -1, -1); err != nil {
+			sysDragMsg = "拖出失败：" + err.Error()
+		} else {
+			sysDragMsg = "拖放已结束（拖到资源管理器 / 微信即可）"
+		}
+		ui.RequestRedraw()
+	}
+	return n
+}
+
+// sysSetVolume 设置系统音量并返回提示文本。
+func sysSetVolume(v float32) string {
+	if v < 0.05 {
+		v = 0
+	}
+	if v > 1 {
+		v = 1
+	}
+	if err := ui.SetSystemVolume(v); err != nil {
+		return "设置音量失败：" + err.Error()
+	}
+	return fmt.Sprintf("已设为 %d%%", int(v*100+0.5))
+}
 
 // sysSampleImage 找一个系统自带壁纸作为图片演示素材。
 func sysSampleImage() string {
@@ -254,7 +344,7 @@ func sysCase() *ui.Node {
 					return
 				}
 				owner := ui.Current()
-				t, err := ui.NewTray("GoGUI 系统能力演示", func() {
+				t, err := ui.NewTray("GUIS 系统能力演示", func() {
 					if owner != nil {
 						owner.ShowWindow(true)
 						owner.Restore()
@@ -273,7 +363,7 @@ func sysCase() *ui.Node {
 						}
 					case 2:
 						if sysTray != nil {
-							sysTray.SetTooltip("GoGUI · " + strconv.Itoa(sysOpened) + " 个窗口")
+							sysTray.SetTooltip("GUIS · " + strconv.Itoa(sysOpened) + " 个窗口")
 						}
 					case 9:
 						if owner != nil {
@@ -455,7 +545,7 @@ func sysCase() *ui.Node {
 				if sysTray == nil {
 					sysMsg = "请先在上方「多窗口 / 托盘」里创建托盘图标"
 				} else {
-					sysTray.Notify("GoGUI 系统能力", "这是一条 NIF_INFO 气泡通知")
+					sysTray.Notify("GUIS 系统能力", "这是一条 NIF_INFO 气泡通知")
 					sysMsg = "已弹出托盘气泡通知"
 				}
 				ui.RequestRedraw()
@@ -473,8 +563,371 @@ func sysCase() *ui.Node {
 		ui.Text(sysMsg).St(ui.St().Text(11.5, 400, ui.ColTextMuted).WrapOn()),
 	).St(ui.St().GapOf(10))
 
+	// ---- 系统级操作（标准目录 / 文件监听 / 原生对话框 / 任务栏 / 窗口特效） ----
+	nativeBody := ui.Column(
+		ui.Row(
+			ui.Text("标准目录").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Btn("下载目录", ui.BtnSecondary, func() {
+				sysKnownDirText = ui.KnownFolder(ui.DirDownloads)
+				ui.RequestRedraw()
+			}),
+			ui.Btn("配置目录", ui.BtnGhost, func() {
+				sysKnownDirText = ui.KnownFolder(ui.DirConfig)
+				ui.RequestRedraw()
+			}),
+			ui.Btn("打开", ui.BtnGhost, func() {
+				if sysKnownDirText != "" {
+					ui.ShellOpen(sysKnownDirText)
+				}
+			}),
+			ui.Text(sysKnownDirText).St(ui.St().Text(11, 400, ui.ColTextMuted).WrapOn()),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("文件监听").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Btn("监听下载目录", ui.BtnSecondary, func() {
+				if sysWatchStop != nil {
+					sysWatchMsg = "已经在监听中，先停止"
+					ui.RequestRedraw()
+					return
+				}
+				dir := ui.KnownFolder(ui.DirDownloads)
+				if dir == "" {
+					sysWatchMsg = "当前平台拿不到下载目录"
+					ui.RequestRedraw()
+					return
+				}
+				sysWatchMsg = "监听中：" + dir
+				sysWatchStop = ui.WatchDir(dir, ui.WatchOptions{Recursive: false},
+					func(evs []ui.FsEvent) {
+						if len(evs) == 0 {
+							return
+						}
+						e := evs[len(evs)-1]
+						sysWatchMsg = fmt.Sprintf("最近变更：%s（共 %d 条）", e.String(), len(evs))
+					})
+				ui.RequestRedraw()
+			}),
+			ui.Btn("停止", ui.BtnGhost, func() {
+				if sysWatchStop != nil {
+					sysWatchStop()
+					sysWatchStop = nil
+					sysWatchMsg = "已停止监听"
+				}
+				ui.RequestRedraw()
+			}),
+			ui.Text(sysWatchMsg).St(ui.St().Text(11, 400, ui.ColTextMuted).WrapOn()),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("原生对话框").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+		ui.Btn("信息", ui.BtnGhost, func() {
+				ui.MessageBox("guis", "这是系统原生消息框，不依赖 GL 上下文。")
+			}),
+			ui.Btn("警告", ui.BtnGhost, func() {
+				ui.MessageBoxEx("注意", "这段文字来自自绘窗口之外的原生通道。",
+					ui.MsgWarn, ui.MsgBoxOK)
+			}),
+			ui.Btn("是 / 否", ui.BtnSecondary, func() {
+				r := ui.MessageBoxEx("确认", "要把这条消息记为已完成吗？", ui.MsgQuestion, ui.MsgBoxYesNo)
+				if r == ui.MsgResYes {
+					sysMsg = "原生对话框返回：是"
+				} else {
+					sysMsg = "原生对话框返回：否"
+				}
+				ui.RequestRedraw()
+			}),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("系统信息").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Btn("读取", ui.BtnSecondary, func() {
+				info := ui.SystemInfo()
+				pw := ui.PowerState()
+				batt := "无电池"
+				if pw.Percent >= 0 {
+					batt = fmt.Sprintf("%d%%", pw.Percent)
+					if pw.Charging {
+						batt += " 充电中"
+					}
+				}
+				sysSysInfoText = fmt.Sprintf("%s | %s | 用户 %s | 主机 %s | 电量 %s | 提权 %v",
+					info.OS, info.Locale, info.UserName, info.HostName, batt, info.Elevated)
+				ui.RequestRedraw()
+			}),
+			ui.Btn("前台窗口", ui.BtnGhost, func() {
+				w := ui.ForegroundWindowInfo()
+				if w.Title == "" && w.Process == "" {
+					sysSysInfoText = "取不到前台窗口（可能被系统权限限制）"
+				} else {
+					sysSysInfoText = fmt.Sprintf("前台：%s（%s, pid=%d）", w.Title, w.Process, w.PID)
+				}
+				ui.RequestRedraw()
+			}),
+			ui.Text(sysSysInfoText).St(ui.St().Text(11, 400, ui.ColTextMuted).WrapOn()),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("任务栏").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Btn("进度 +1", ui.BtnSecondary, func() {
+				sysTaskbarN++
+				if sysTaskbarN > 10 {
+					sysTaskbarN = 0
+				}
+				if a := ui.Current(); a != nil {
+					if sysTaskbarN == 0 {
+						a.ClearTaskbarProgress()
+					} else {
+						a.SetTaskbarProgress(int64(sysTaskbarN), 10)
+					}
+				}
+				ui.RequestRedraw()
+			}),
+			ui.Btn("角标 +1", ui.BtnGhost, func() {
+				sysTaskbarN++
+				if a := ui.Current(); a != nil {
+					a.SetBadge(sysTaskbarN)
+				}
+			}),
+			ui.Btn("闪烁", ui.BtnGhost, func() {
+				if a := ui.Current(); a != nil {
+					a.Flash(3)
+				}
+			}),
+			ui.Text(fmt.Sprintf("当前进度 %d/10", sysTaskbarN)).St(ui.St().Text(11, 400, ui.ColTextMuted)),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("窗口特效").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Switch("sys-opacity", sysOpacityOn, func(v bool) {
+				sysOpacityOn = v
+				if a := ui.Current(); a != nil {
+					if v {
+						a.SetOpacity(0.92)
+					} else {
+						a.SetOpacity(1)
+					}
+				}
+				ui.RequestRedraw()
+			}),
+			ui.Text("半透明").St(ui.St().Text(11.5, 400, ui.ColTextMuted)),
+			ui.Switch("sys-dark-title", ui.SystemDarkMode(), func(v bool) {
+				if a := ui.Current(); a != nil {
+					a.SetDarkTitleBar(v)
+				}
+			}),
+			ui.Text("深色标题栏").St(ui.St().Text(11.5, 400, ui.ColTextMuted)),
+			ui.Btn("置底 2 秒", ui.BtnGhost, func() {
+				a := ui.Current()
+				if a == nil {
+					return
+				}
+				a.SetKeepOnBottom(true)
+				ui.RequestRedrawIn(a)
+				go func() {
+					time.Sleep(2 * time.Second)
+					a.Post(func() {
+						a.SetKeepOnBottom(false)
+						a.Activate()
+						ui.RequestRedraw()
+					})
+				}()
+			}),
+			ui.Btn("防截屏", ui.BtnGhost, func() {
+				if a := ui.Current(); a != nil {
+					a.SetCaptureExcluded(true)
+					sysMsg = "已开启防截屏（WDA_EXCLUDEFROMCAPTURE），再点一次没有关闭按钮，可切页重置"
+				}
+				ui.RequestRedraw()
+			}),
+		).St(ui.St().GapOf(12)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("富文本剪贴板").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Btn("写入 HTML", ui.BtnSecondary, func() {
+				err := ui.ClipboardSetHTML(`<b>GUIS</b> 富文本 · <i>斜体</i> · <span style="color:#f00">红色</span>`)
+				if err != nil {
+					sysMsg = "写入 HTML 失败：" + err.Error()
+				} else {
+					sysMsg = "已写入 HTML，粘到 Word / 浏览器里可保留格式"
+				}
+				ui.RequestRedraw()
+			}),
+			ui.Btn("读回 HTML", ui.BtnGhost, func() {
+				html, err := ui.ClipboardHTML()
+				if err != nil {
+					sysMsg = "读回失败：" + err.Error()
+				} else {
+					sysMsg = "剪贴板 HTML：" + html
+				}
+				ui.RequestRedraw()
+			}),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("文件图标").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Btn("选择文件", ui.BtnSecondary, func() {
+				p, ok := ui.OpenFileDialog("选择任意文件", "所有文件|*.*")
+				if !ok {
+					return
+				}
+				sysDragFile = p
+				sysIconType = ui.FileTypeName(p)
+				img, err := ui.FileIcon(p, 32)
+				if err != nil {
+					sysMsg = "取图标失败：" + err.Error()
+					ui.RequestRedraw()
+					return
+				}
+				sysIconURL = sysImageURL(img)
+				thumb, terr := ui.FileThumbnail(p, 64, 64)
+				if terr == nil {
+					sysThumbURL = sysImageURL(thumb)
+				}
+				sysMsg = "已读取图标与缩略图：" + filepath.Base(p)
+				ui.RequestRedraw()
+			}),
+			sysIconPreview(),
+			sysThumbPreview(),
+			ui.Text(sysIconType).St(ui.St().Text(11, 400, ui.ColTextMuted)),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("拖出文件").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Btn("准备文件", ui.BtnSecondary, func() {
+				dir := ui.KnownFolder(ui.DirTemp)
+				p := filepath.Join(dir, "guis-drag-demo.txt")
+				if err := os.WriteFile(p, []byte("这是从 GoGUI 拖出来的示例文件\n"), 0o644); err != nil {
+					sysDragMsg = "写临时文件失败：" + err.Error()
+				} else {
+					sysDragFile = p
+					sysDragMsg = "已准备好：" + p
+				}
+				ui.RequestRedraw()
+			}),
+			sysDragButton(),
+			ui.Text(sysDragMsg).St(ui.St().Text(11, 400, ui.ColTextMuted).WrapOn()),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("键鼠模拟").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Btn("3 秒后输入文字", ui.BtnSecondary, func() {
+				sysInputMsg = "已排队：3 秒内把光标放到任意输入框…"
+				go func() {
+					time.Sleep(3 * time.Second)
+					if err := ui.SendText("Hello from guis · 你好"); err != nil {
+						sysInputMsg = "模拟输入失败：" + err.Error()
+					} else {
+						sysInputMsg = "已通过 SendInput 输入「Hello from guis · 你好」"
+					}
+					ui.RequestRedraw()
+				}()
+			}),
+			ui.Btn("Ctrl+A", ui.BtnGhost, func() {
+				if err := ui.SendKeyCombo(ui.HotCtrl, 'A'); err != nil {
+					sysInputMsg = "模拟按键失败：" + err.Error()
+				} else {
+					sysInputMsg = "已发送 Ctrl+A"
+				}
+				ui.RequestRedraw()
+			}),
+			ui.Text(sysInputMsg).St(ui.St().Text(11, 400, ui.ColTextMuted).WrapOn()),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("系统音量").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Btn("读取", ui.BtnSecondary, func() {
+				v := ui.SystemVolume()
+				if v < 0 {
+					sysVolMsg = "当前平台读不到系统音量"
+				} else {
+					sysVolMsg = fmt.Sprintf("当前音量 %d%%", int(v*100+0.5))
+				}
+				ui.RequestRedraw()
+			}),
+			ui.Btn("音量 +10%", ui.BtnGhost, func() {
+				v := ui.SystemVolume()
+				if v < 0 {
+					v = 0.5
+				}
+				sysVolMsg = sysSetVolume(v + 0.1)
+			}),
+			ui.Btn("音量 -10%", ui.BtnGhost, func() {
+				v := ui.SystemVolume()
+				if v < 0 {
+					v = 0.5
+				}
+				sysVolMsg = sysSetVolume(v - 0.1)
+			}),
+			ui.Btn("静音切换", ui.BtnGhost, func() {
+				muted, err := ui.ToggleSystemMute()
+				if err != nil {
+					sysVolMsg = "切换失败：" + err.Error()
+				} else if muted {
+					sysVolMsg = "系统已静音"
+				} else {
+					sysVolMsg = "系统已取消静音"
+				}
+				ui.RequestRedraw()
+			}),
+			ui.Text(sysVolMsg).St(ui.St().Text(11, 400, ui.ColTextMuted)),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("联网 / 会话").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Btn("检测联网", ui.BtnGhost, func() {
+				sysNetMsg = "检测中…"
+				ui.OnlineAsync(func(ok bool) {
+					if ok {
+						sysNetMsg = "在线（ICMP / DNS 探测成功）"
+					} else {
+						sysNetMsg = "离线（探测失败）"
+					}
+					ui.RequestRedraw()
+				})
+				ui.RequestRedraw()
+			}),
+			ui.Btn("锁屏", ui.BtnGhost, func() {
+				if ui.MessageBoxEx("锁屏", "确定要锁定当前会话吗？", ui.MsgWarn, ui.MsgBoxOKCancel) != ui.MsgResOK {
+					return
+				}
+				if err := ui.LockScreen(); err != nil {
+					sysNetMsg = "锁屏失败：" + err.Error()
+				} else {
+					sysNetMsg = "已锁屏"
+				}
+				ui.RequestRedraw()
+			}),
+			ui.Text(sysNetMsg).St(ui.St().Text(11, 400, ui.ColTextMuted)),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Row(
+			ui.Text("快捷方式").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(84)),
+			ui.Btn("在桌面创建 .lnk", ui.BtnSecondary, func() {
+				exe, err := os.Executable()
+				if err != nil {
+					sysLinkMsg = "取自身路径失败：" + err.Error()
+					ui.RequestRedraw()
+					return
+				}
+				desk := ui.KnownFolder(ui.DirDesktop)
+				if desk == "" {
+					sysLinkMsg = "当前平台拿不到桌面目录"
+					ui.RequestRedraw()
+					return
+				}
+				lnk := filepath.Join(desk, "guis 演示.lnk")
+				serr := ui.CreateShortcut(lnk, ui.ShellLink{
+					Target: exe, WorkDir: filepath.Dir(exe),
+					Description: "guis 组件演示", Hotkey: "Ctrl+Alt+G",
+				})
+				if serr != nil {
+					sysLinkMsg = "创建失败：" + serr.Error()
+				} else {
+					sysLinkMsg = "已创建：" + lnk
+				}
+				ui.RequestRedraw()
+			}),
+			ui.Btn("显示位置", ui.BtnGhost, func() {
+				if desk := ui.KnownFolder(ui.DirDesktop); desk != "" {
+					ui.RevealInExplorer(filepath.Join(desk, "guis 演示.lnk"))
+				}
+			}),
+			ui.Text(sysLinkMsg).St(ui.St().Text(11, 400, ui.ColTextMuted).WrapOn()),
+		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter),
+		ui.Text(sysMsg).St(ui.St().Text(11.5, 400, ui.ColTextMuted).WrapOn()),
+	).St(ui.St().GapOf(10))
+
 	return ui.Column(
-		pageHead("系统能力", "图片 / 拖入文件 / 毛玻璃 / Emoji / 动画 / 输入法 / 滚动条 / 系统操作"),
+		pageHead("系统能力", "图片 / 拖入拖出 / 毛玻璃 / Emoji / 动画 / 输入法 / 系统级操作（目录·监听·任务栏·特效·会话）"),
 		sysSection("图片解码与纹理绘制", "PNG/JPEG/GIF/BMP → RGBA 纹理 → 圆角裁剪", imgBody),
 		sysSection("拖入文件 WM_DROPFILES", "拖到窗口内松手 → 落点命中节点 OnDrop → 路径列表 / 图片自动预览", dropBody),
 		sysSection("毛玻璃 backdrop-filter", "离屏 FBO + Kawase 模糊", glass),
@@ -484,6 +937,7 @@ func sysCase() *ui.Node {
 		sysSection("滚动条", "内容溢出时显示，悬停加宽、可拖拽", scrollDemo),
 		sysSection("多窗口 / 托盘 / 文件对话框", "独立 GL 上下文窗口、任务栏托盘、系统对话框", platform),
 		sysSection("系统操作能力", "置顶 / 全局热键 / 托盘气泡 / 剪贴板 / 阻止休眠 / 深浅色 / 回收站", opsBody),
+		sysSection("系统级操作（新增）", "标准目录 / 文件监听 / 原生对话框 / 系统信息·电源 / 任务栏 / 窗口特效 / 文件图标 / 拖出 / 富文本剪贴板 / 键鼠模拟 / 音量 / 会话 / 快捷方式", nativeBody),
 	).St(ui.St().Padding(26).GapOf(18))
 }
 

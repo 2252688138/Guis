@@ -1,16 +1,16 @@
 //go:build js
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import "syscall/js"
 
 // prefsStorageKey localStorage 键名。
-const prefsStorageKey = "gogui.prefs"
+const prefsStorageKey = "guis.prefs"
 
 // prefsLoadRaw 从 localStorage 读取偏好（Web 端没有文件路径）。
 func prefsLoadRaw() ([]byte, string, error) {

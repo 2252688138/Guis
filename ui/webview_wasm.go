@@ -1,9 +1,9 @@
 //go:build js && wasm
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -13,8 +13,8 @@ import (
 	"strings"
 	"syscall/js"
 
-	"gogui/internal/geom"
-	"gogui/internal/gpu"
+	"guis/internal/geom"
+	"guis/internal/gpu"
 )
 
 // 浏览器端的内嵌浏览器与视频画面。
@@ -102,7 +102,7 @@ func (a *App) paintVideo(n *Node, r geom.Rect, st *Style) {
 	}
 	rot := p.RotationDeg()
 	radius := cssRadius(st.Radius)
-	clip := a.currentClip(r)
+	clip := a.clipRect(r)
 	placeOverlay(src.id, r, clip, func(el js.Value) {
 		stx := el.Get("style")
 		stx.Set("objectFit", fit)
@@ -511,7 +511,7 @@ func (a *App) paintWebView(n *Node, r geom.Rect, st *Style) {
 		a.wvRects = map[*WebView]geom.Rect{}
 	}
 	a.wvRects[wv] = r
-	clip := a.currentClip(r)
+	clip := a.clipRect(r)
 	radius := cssRadius(st.Radius)
 	if st.Radius == [4]float32{} {
 		radius = fmt.Sprintf("%.2fpx", wv.radius)

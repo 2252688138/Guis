@@ -1,14 +1,14 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
-	"gogui/internal/geom"
-	"gogui/internal/gpu"
-	"gogui/internal/text"
+	"guis/internal/geom"
+	"guis/internal/gpu"
+	"guis/internal/text"
 )
 
 // 富文本（span 树）：一段文字内混排不同字号 / 粗细 / 颜色 / 链接 / 行内代码。
@@ -196,14 +196,10 @@ func (lc *layoutCtx) layoutRich(n *Node, maxW float32) (float32, float32) {
 		sp := n.Spans[i]
 		f := lc.spanFont(sp, base)
 		fonts[i] = f
-		sc := float32(1)
-		if f != nil && f.Scale() > 0 {
-			sc = f.Scale()
-		}
 		for _, r := range sp.Text {
 			at := richAtom{r: r, span: i, adv: 0}
 			if f != nil {
-				at.adv = f.GlyphFor(r).Advance / sc
+				at.adv = f.Advance(r)
 			}
 			switch {
 			case r == '\n':
@@ -313,9 +309,9 @@ func (lc *layoutCtx) layoutRich(n *Node, maxW float32) (float32, float32) {
 			}
 			rs = rs[:len(rs)-1]
 			nw := float32(0)
-			if f := fonts[p.span]; f != nil && f.Scale() > 0 {
+			if f := fonts[p.span]; f != nil {
 				for _, r := range rs {
-					nw += f.GlyphFor(r).Advance / f.Scale()
+					nw += f.Advance(r)
 				}
 			}
 			last.w += nw - p.w

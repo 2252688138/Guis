@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -19,7 +19,7 @@ import (
 //
 //	ui.SetCrashHandler(func(rep ui.CrashReport) { upload(rep.Summary) })
 //
-// panic 会被捕获并写入 %AppData%/gogui/crash-*.log（含堆栈），
+// panic 会被捕获并写入 %AppData%/guis/crash-*.log（含堆栈），
 // CrashPanel 在界面里展示最近一次崩溃。
 
 // CrashReport 一次崩溃的信息。
@@ -44,7 +44,7 @@ func SetCrashHandler(fn func(CrashReport)) {
 	crashMu.Unlock()
 }
 
-// SetCrashDir 指定崩溃日志目录（默认用户配置目录/gogui/crashes）。
+// SetCrashDir 指定崩溃日志目录（默认用户配置目录/guis/crashes）。
 func SetCrashDir(dir string) {
 	crashMu.Lock()
 	crashDirSet = dir
@@ -95,7 +95,7 @@ func crashDir() string {
 	if err != nil || base == "" {
 		base = "."
 	}
-	return filepath.Join(base, "gogui", "crashes")
+	return filepath.Join(base, "guis", "crashes")
 }
 
 // enableCrashLog 把未捕获 panic / fatal error 完整写入崩溃日志文件。
@@ -120,12 +120,12 @@ func enableCrashLog() {
 	_ = f.Close()
 }
 
-// startCPUProfileIfNeeded GOGUI_PPROF=<文件路径> 时采集 N 秒 CPU profile。
+// startCPUProfileIfNeeded GUIS_PPROF=<文件路径> 时采集 N 秒 CPU profile。
 //
-//	GOGUI_PPROF=cpu.prof  →  运行 8 秒后自动落盘
-//	go tool pprof -top dist\gogui-gallery.exe cpu.prof
+//	GUIS_PPROF=cpu.prof  →  运行 8 秒后自动落盘
+//	go tool pprof -top dist\guis-gallery.exe cpu.prof
 func startCPUProfileIfNeeded() {
-	path := os.Getenv("GOGUI_PPROF")
+	path := os.Getenv("GUIS_PPROF")
 	if path == "" {
 		return
 	}

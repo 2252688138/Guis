@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -270,7 +270,7 @@ func UpdatePanelView(cfg UpdateConfig) *Node {
 					if dir == "" {
 						dir = os.TempDir()
 					}
-					dst := filepath.Join(dir, "gogui-update", "app-update.exe")
+					dst := filepath.Join(dir, "guis-update", "app-update.exe")
 					err := DownloadUpdate(upd.info, dst, func(done, total int64) {
 						p := float32(0)
 						if total > 0 {

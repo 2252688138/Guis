@@ -1,10 +1,10 @@
-// Go-gui — gallery 页面拆分：共享状态 / 页面路由 / 全局动作
+// guis — gallery 页面拆分：共享状态 / 页面路由 / 全局动作
 // 本文件属于 pages 包，与其它页面文件一起由 main.go 引入。
 
 package pages
 
 import (
-	"gogui/ui"
+	"guis/ui"
 )
 
 // Current 当前分类页（组件已按类型聚合，登录/注册等业务页不再演示）。
@@ -33,7 +33,11 @@ var Cases = []CaseItem{
 	{"layout", "布局与仪表盘", "▨", "Flex / 网格 / 换行 / 瀑布流 / 叠层 / 响应式 / 统计卡"},
 	{"charts", "图表", "◐", "折线 / 面积 / 柱状 / 饼 / 环形 / 雷达 / 散点"},
 	{"text", "文本与富文本", "✎", "Markdown 渲染 / 富文本 / 代码高亮"},
-	{"system", "系统操作", "◈", "文件与拖入 / 剪贴板 / 热键 / 托盘 / WebView / 打印"},
+	{"system", "系统操作", "◈", "文件与拖入拖出 / 剪贴板 / 热键 / 托盘 / 任务栏 / 窗口特效 / WebView / 打印"},
+	{"office", "办公文档", "▣", "Excel / Word / PDF 读写与渲染 · 打印预览 · 导出 PDF"},
+	{"icons", "图标库", "✦", "Iconfont 矢量图标：内置 80+ 图标 / 任意尺寸清晰 / 换色与线宽 / 运行时注册自定义图标"},
+	{"code", "代码编辑器", "⌨", "十万行虚拟渲染 / 语法高亮 / 行号 + 小地图 / 右键菜单 / LSP 语法解析"},
+	{"term", "伪终端", "▮", "xterm 风格 VT/ANSI 终端：256/真彩色 / 备用屏 / 回看 / 选区复制 / 内置 ConPTY 本地 shell"},
 }
 
 // ---- 案例状态 ----
@@ -47,7 +51,7 @@ var (
 
 	msgInput = ""
 	messages = []chatMsg{
-		{false, "你好，GoGUI 组件库更新了吗？"},
+		{false, "你好，GUIS 组件库更新了吗？"},
 		{true, "已经更新：新增 Stack 叠层、绝对定位与表单控件。"},
 		{false, "那聊天界面能做吗？"},
 		{true, "当然，下面这个案例就是用它拼的。"},
@@ -105,6 +109,15 @@ func aliasCase(id string) string {
 		return "list"
 	case "markdown":
 		return "text"
+	case "icon", "iconfont", "icons":
+		return "icons"
+	case "editor", "codeeditor":
+		return "code"
+	case "terminal", "pty", "shell", "xterm":
+		return "term"
+	case "excel", "word", "pdf":
+		officeTab = id
+		return "office"
 	}
 	return id
 }
@@ -129,7 +142,7 @@ func SetTheme(name string) {
 		ui.UseTheme(ui.ThemeDark)
 	}
 	Theme = name
-	toastShow("主题已切换：" + name)
+	toastShow(ui.T("g.toast.theme") + themeLabel(name))
 	ui.RequestRedraw()
 }
 
@@ -137,7 +150,7 @@ func SetTheme(name string) {
 func CaseDesc() string {
 	for _, c := range Cases {
 		if c.ID == Current {
-			return c.Desc
+			return CaseDescOf(c)
 		}
 	}
 	return ""
@@ -166,6 +179,21 @@ func Content() *ui.Node {
 	case "system":
 		// 系统页内部自带页签；WebView 是独立子窗口，不能放进 Scroll
 		return systemCase()
+	case "office":
+		// 办公文档：Excel / Word / PDF 页签 + 打印预览
+		return officeCase()
+	case "icons":
+		// 图标库：整页网格 + 滚动，图标是路径纹理，无需外层额外容器
+		return ui.Scroll(iconsCase()).St(ui.St().GrowTo(1)).K("scroll-icons")
+	case "code":
+		// 代码编辑器：整页自绘控件（不能包在外层 Scroll 里，滚动由组件自己管理）
+		return codeCase()
+	case "term":
+		// 伪终端：同样不能包 Scroll（回看滚动由终端自己处理）
+		return termCase()
+	case "api":
+		// 帮助 → API 文档：整页双栏（左目录 / 右正文），壳层在该页隐藏左侧导航
+		return APIView()
 	}
 	return ui.Scroll(basicCase()).St(ui.St().GrowTo(1)).K("scroll-basic")
 }

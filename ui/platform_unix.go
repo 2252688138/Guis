@@ -1,9 +1,9 @@
 //go:build !windows && !js
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -267,9 +267,12 @@ func MoveToRecycleBin(path string) bool {
 // SystemDarkMode 系统是否处于深色模式（读取桌面环境的主题偏好）。
 func SystemDarkMode() bool { return platformPrefersDark() }
 
-// ---- 托盘（待实现，先给出可用但不可见的最小实现）----
+// ---- 托盘 ----
+//
+// TrayItem 是跨平台共享的菜单项描述；具体实现按平台分文件：
+//   - tray_x11.go：XEmbed 系统托盘（Linux / *BSD）
+//   - tray_darwin.go：NSStatusItem（macOS）
 
-// TrayItem 托盘菜单项（字段与 Windows 端一致，保证同一份菜单代码可编译）。
 type TrayItem struct {
 	ID        int
 	Label     string
@@ -279,37 +282,3 @@ type TrayItem struct {
 	// Submenu 非空时生成二级菜单。
 	Submenu []TrayItem
 }
-
-// Tray 托盘图标（本平台占位：创建成功但不可见，SetTooltip/SetItems 安全空操作）。
-type Tray struct {
-	tooltip string
-	items   []TrayItem
-	onClick func()
-	onMenu  func(id int)
-}
-
-// NewTray 创建托盘图标。本平台尚未接入（Linux 需 StatusNotifierItem、macOS 需 NSStatusBar），
-// 返回的错误可被业务忽略：调用方应先查 HasCap(CapTray)。
-func NewTray(tooltip string, onClick func(), items []TrayItem, onMenu func(id int)) (*Tray, error) {
-	return &Tray{tooltip: tooltip, items: items, onClick: onClick, onMenu: onMenu}, errNoTray
-}
-
-// SetTooltip 更新托盘提示。
-func (t *Tray) SetTooltip(s string) {
-	if t != nil {
-		t.tooltip = s
-	}
-}
-
-// SetItems 更新右键菜单。
-func (t *Tray) SetItems(items []TrayItem) {
-	if t != nil {
-		t.items = items
-	}
-}
-
-// Notify 气泡通知（本平台暂不支持，空操作）。
-func (t *Tray) Notify(title, msg string) {}
-
-// Remove 移除托盘图标。
-func (t *Tray) Remove() { t = nil }

@@ -287,6 +287,23 @@ Section "主程序" SEC_MAIN
 
     SetOutPath "$INSTDIR"
     File "/oname=${APPEXE}" "${SRC_EXE}"
+
+    ; 可选：随包携带静态资源（build-deepseek.ps1 传 /DASSETS_DIR=<dist\assets\intro>）
+    ; 未定义时整段编译期剔除，gallery 安装包不受影响。
+    !ifdef ASSETS_DIR
+        SetOutPath "$INSTDIR\assets\intro"
+        File /r "${ASSETS_DIR}\*"
+        SetOutPath "$INSTDIR"
+    !endif
+
+    ; 可选：桌宠素材（build-deepseek.ps1 传 /DPET_DIR=<dist\assets\pet>）
+    ; 未定义时整段编译期剔除，桌宠退化为程序化占位形象。
+    !ifdef PET_DIR
+        SetOutPath "$INSTDIR\assets\pet"
+        File /r "${PET_DIR}\*"
+        SetOutPath "$INSTDIR"
+    !endif
+
     WriteUninstaller "$INSTDIR\uninstall.exe"
 
     ; 开始菜单 + 桌面快捷方式

@@ -1,4 +1,4 @@
-# GoGUI
+# GUIS
 
 纯 Go、零 cgo 的跨平台自绘 GUI 框架。**一套 UI 代码**编译到 Windows / Linux / macOS / Web（Android / iOS 骨架已就位）；界面主体全部由 OpenGL 自绘（不依赖 WebView），另带可选的内嵌浏览器组件（系统 WebView2）；风格对齐现代 Web UI（深色、圆角、渐变、投影、flex 布局），样式可完全自定义。
 
@@ -57,6 +57,7 @@
 
 | 方向 | 新增 / 修复 |
 |---|---|
+| 办公文档 | 新增 `internal/office`（零依赖 xlsx / docx / pdf 读写，含 TrueType 字体子集嵌入）与 `ui/office.go`（工作表 / 文档流 / PDF 页面渲染 + 打印 + `ExportPDF`），gallery 新增「办公文档」页 |
 | 列表组件 | `FileTree` 文件树（缩进层级 / 展开折叠 / 选中高亮，展开态按 Key 记忆、折叠子树不建节点）、`MediaCard` 图文卡片（封面 / 角标 / 评分 / 标题 / 标签 / 操作按钮）、`ListRows` 列表行（图标 / 标题 / 副标题 / 右侧标签，支持多选与分隔线）、`PostCard` 社区帖子、`Pager` 数字分页（省略号折叠 + 上锁页禁用） |
 | 示例页 | 「列表与表格」页改为**页内下划线页签**：列表（文件树 / 图文卡片 / 列表 / 社区帖子 / 分页）、表格（数据表格 / 聊天 / 虚拟列表 / 拖拽重排 / 三态），切换时滚动位置互不干扰 |
 | 开关 | 新增 `SwitchEx` + 样式预设（默认 / 星光 / 带字 / 渐变 / 大中小 / 禁用），可用 `WithIcon` / `WithIconNode` / `WithLabels` / `WithLabelStyle` / `WithLabelWidth` 自定义图标与文案 |
@@ -66,6 +67,11 @@
 | 滚动 | 滚轮首次滚动即建立偏移条目，修掉「有滚动条但滚轮不滚、拖一下才恢复」 |
 | 布局 | 百分比尺寸只在父级对应轴确定时有效；需要撑满一律用 `Grow(1)`，`Hp(100)` 在主轴无上限时会解析成 0（WebView2 白屏的根因） |
 | 窗口 | gallery 改为**多开**：每次启动都是独立窗口与独立页面状态（组件库里的 `SingleInstance` 仍保留，需要时自行启用） |
+| Android | 新增 `build-android-apk.ps1`：gallery 一套命令直出 APK（arm64-v8a / armeabi-v7a / x86 / x86_64，`aapt2` + `zipalign` + `apksigner`，**不依赖 gradle**）；同时修掉移动端四处启动/渲染问题：入口注册时机（`init` 而非 `main`）、GLSL 330→300 es 翻译、EGL 上下文线程归属、手指拖动合成滚轮（组件库 `Scroll` 只认滚轮） |
+| 手机适配 | 字号自适应（按屏幕宽度反推 `SetUIScale`，上限放宽到 250%）+ 顶部 A- / A+ 手动缩放；文本**自动换行**（纵向容器里超宽文本自动折行，横向容器保持单行）；`KeyValue` 等左右布局在窄屏改为上下堆叠；手指拖动改为 **1:1 即时跟手**（拖动不再走每帧 30% 的缓动，松手即停） |
+| 渲染性能 | 字形按字符串缓存（`text.Font.GlyphsFor`）：文本绘制不再逐字加锁查表，300 行中文取字形 362µs → 10µs；形状/文字顶点一次扩容直写；GL 程序 / VAO / 纹理 / 视口 uniform 加状态缓存，批次切换不再做冗余驱动调用；`paintText` 不再为每个文本节点每帧分配闭包；折行缓存改读写锁、字体缓存同帧重复命中不再写 map |
+| 内存 | 空闲回收时把顶点暂存区收缩回初始化容量（画过十万行表格后形状/文字缓冲会涨到约 7MB）；图片尺寸缓存加 4096 条上限；字形序列缓存同时按条数与字形总数封顶 |
+| 组件缓存 | 新增 `Style.CacheOn()` / `ui.CachedLayer(key, bg, child)`：内容稳定的子树首次绘制后快照成纹理，之后一帧一张图贴回，整棵子树不再产生顶点/查字形。给重页面（长文档块、信息卡）按需开启；不满足条件（描边/阴影/交互控件/动画/图片）时自动回退普通绘制，`GUIS_FPS=1` 的日志里有 `layer=命中/未命中` |
 
 ## 为什么不用 WebView 也能做到 Web 观感
 
@@ -102,7 +108,7 @@ ui.SetSuperSample(ui.SSOff)  // 1:1，GPU 开销最低
 ```go
 package main
 
-import "gogui/ui"
+import "guis/ui"
 
 func main() {
     ui.Run(ui.Options{
@@ -140,7 +146,7 @@ go build -ldflags "-H=windowsgui" -o app.exe ./cmd/gallery
 ./build.ps1 -Target all     # gallery + tools
 ./build.ps1 -Upx            # 再叠加 UPX -9（体积最小）
 ./build.ps1 -Dev            # 开发构建：保留符号 + 控制台日志
-./build.ps1 -Installer          # 构建 + 打 NSIS 安装器 -> dist\GoGUI-<版本>-setup.exe
+./build.ps1 -Installer          # 构建 + 打 NSIS 安装器 -> dist\GUIS-<版本>-setup.exe
 ./build.ps1 -Bump patch -Installer # 版本号 +1 后打包
 ```
 
@@ -173,24 +179,24 @@ go build -ldflags "-H=windowsgui" -o app.exe ./cmd/gallery
 
 | 位置 | 注入方式 | 读取方式 |
 | --- | --- | --- |
-| 运行时 | `-ldflags -X gogui/internal/version.Number=...` | `version.String()` / `version.Full()` |
+| 运行时 | `-ldflags -X guis/internal/version.Number=...` | `version.String()` / `version.Full()` |
 | exe 文件属性 | `tools/winres` 生成 `cmd/gallery/rsrc_windows_*.syso` | 右键属性 → 详细信息 |
 | 安装器 | `makensis /DVERSION=... /DVI_VERSION=...` | 「应用和功能」里的版本、安装包文件名 |
 
 `internal/version` 还带提交哈希、构建时间、发布通道，以及语义化版本解析与比较（`version.Parse` / `version.Compare`）：
 
 ```go
-import "gogui/internal/version"
+import "guis/internal/version"
 
 version.String()   // v0.1.0
-version.Title()    // GoGUI v0.1.0（gallery 窗口标题就用它）
+version.Title()    // GUIS v0.1.0（gallery 窗口标题就用它）
 version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 ```
 
 ## 安装器（NSIS 3）
 
 ```powershell
-./build.ps1 -Installer                   # -> dist\GoGUI-0.1.0-setup.exe
+./build.ps1 -Installer                   # -> dist\GUIS-0.1.0-setup.exe
 ./build.ps1 -Installer -Upx              # 先 UPX 压 exe，再打包
 ./build.ps1 -Installer -Channel release  # 正式通道（exe 属性与安装包注释同步标注）
 ./build.ps1 -Bump patch -Installer       # 版本号 +1 后打包
@@ -202,8 +208,8 @@ version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 
 | 选项 | 安装目录 | 注册表 | 权限 |
 | --- | --- | --- | --- |
-| 仅为我安装（默认） | `%LOCALAPPDATA%\Programs\GoGUI` | HKCU | 无需管理员 |
-| 为所有用户安装 | `%ProgramFiles%\GoGUI` | HKLM | 未提权时自动 UAC 重入 |
+| 仅为我安装（默认） | `%LOCALAPPDATA%\Programs\GUIS` | HKCU | 无需管理员 |
+| 为所有用户安装 | `%ProgramFiles%\GUIS` | HKLM | 未提权时自动 UAC 重入 |
 
 - 已提权运行时默认选中「所有用户」，普通双击默认「仅为我」；
 - 目录页可自由修改安装目录，**自定义路径会被完整保留**：切换范围只在两个默认目录之间切换，不会覆盖手选路径；两种范围各自记住上次安装的目录。
@@ -212,11 +218,11 @@ version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 
 ```powershell
 # 安装（/D 必须是最后一个参数，路径不加引号）
-GoGUI-0.1.0-setup.exe /S /currentuser /D=D:\Apps\GoGUI
-GoGUI-0.1.0-setup.exe /S /allusers              # 需已提权，否则返回码 5
+GUIS-0.1.0-setup.exe /S /currentuser /D=D:\Apps\GUIS
+GUIS-0.1.0-setup.exe /S /allusers              # 需已提权，否则返回码 5
 
 # 卸载
-"%LOCALAPPDATA%\Programs\GoGUI\uninstall.exe" /S
+"%LOCALAPPDATA%\Programs\GUIS\uninstall.exe" /S
 ```
 
 `/currentuser`、`/allusers` 会跳过安装范围选择页，适合脚本与 CI。
@@ -226,10 +232,10 @@ GoGUI-0.1.0-setup.exe /S /allusers              # 需已提权，否则返回码
 | 位置 | 内容 |
 | --- | --- |
 | `$INSTDIR` | `gallery.exe`、`uninstall.exe` |
-| 开始菜单 | 「GoGUI」程序快捷方式 + 卸载项 |
-| 桌面 | GoGUI 快捷方式 |
-| 注册表 | `…\Uninstall\GoGUI`：DisplayName / DisplayVersion / DisplayIcon / Publisher / InstallLocation / EstimatedSize / NoModify / NoRepair |
-| 注册表 | `Software\GoGUI`：InstallDir / Version / Channel / Scope |
+| 开始菜单 | 「GUIS」程序快捷方式 + 卸载项 |
+| 桌面 | GUIS 快捷方式 |
+| 注册表 | `…\Uninstall\GUIS`：DisplayName / DisplayVersion / DisplayIcon / Publisher / InstallLocation / EstimatedSize / NoModify / NoRepair |
+| 注册表 | `Software\GUIS`：InstallDir / Version / Channel / Scope |
 
 - 安装包文件名、exe 文件属性、卸载列表里的 `DisplayVersion` 全部来自 `VERSION.txt`，不需要手工同步；
 - 升级 = 用新版本安装器覆盖安装（同范围同目录），旧文件被替换、注册表版本号更新；
@@ -237,7 +243,7 @@ GoGUI-0.1.0-setup.exe /S /allusers              # 需已提权，否则返回码
 
 ### 改脚本时注意（踩过的坑）
 
-- `installer/gogui.nsi` 含中文，**必须保存为 UTF-8 带 BOM**，否则 makensis 报 `Bad text encoding`；
+- `installer/guis.nsi` 含中文，**必须保存为 UTF-8 带 BOM**，否则 makensis 报 `Bad text encoding`；
 - 安装 `Section` 内不要再给 `$INSTDIR` 赋值（会覆盖目录页手选的路径），范围切换只调 `SetScope`；
 - 不要用 `InstallDirRegKey`：它在 `.onInit` 之前就把旧目录塞进 `$INSTDIR`，会让「所有用户」误用当前用户的旧路径；
 - 一个 exe 只能有一个 `.rsrc` 节，图标与版本信息必须由同一个 `tools/winres` 产物提供。
@@ -248,8 +254,8 @@ GoGUI-0.1.0-setup.exe /S /allusers              # 需已提权，否则返回码
 
 ```powershell
 go run ./tools/winres -arch amd64 -ico ui/assets/icon.ico `
-  -version 0.1.0 -product GoGUI -company Go-gui `
-  -desc "GoGUI 纯 Go 自绘 GUI 框架" -copyright "Copyright (c) 2026 Mr.Shu" `
+  -version 0.1.0 -product GUIS -company guis `
+  -desc "GUIS 纯 Go 自绘 GUI 框架" -copyright "Copyright (c) 2026 Mr.Shu" `
   -commit 1a2b3c4 -channel release -out cmd/gallery/rsrc_windows_amd64.syso
 ```
 
@@ -290,6 +296,7 @@ ui.Button("组件库", func() {
 | 媒体 | `Video`（画面节点）`VideoPlayer`（播放器）`Player` `VideoClip` `MediaSource`（ffmpeg 解码） |
 | 浏览器 | `WebView`（系统 WebView2 内嵌真实网页）+ `WebViewNode` / `WebViewBar` / `WebViewStatus` |
 | 浮层 | `Modal` `ModalEx` `MenuPanel` `TooltipOf` + `TooltipLayer` `Toast` `Banner` |
+| 办公 | `SheetTable`（工作表表格）`SpreadsheetView`（多表页签）`WordView`（文档流）`PDFView`（页面 + 缩放）`OfficeView`（按类型自动分派）`OfficePrintable` / `ExportPDF`（打印与导出） |
 
 支撑这些组件的引擎能力：
 - `Stack` 叠层容器：子节点重叠绘制，后声明者在上层（开关旋钮 / 进度条 / 浮层）
@@ -306,7 +313,7 @@ ui.Button("组件库", func() {
 
 ## 界面案例
 
-`cmd/gallery` 提供 8 个按组件类型聚合的页面，左侧列表切换；其中「列表与表格」「媒体播放」「系统操作」还带**页内页签**，点击与输入均可交互：
+`cmd/gallery` 提供 9 个按组件类型聚合的页面，左侧列表切换；其中「列表与表格」「媒体播放」「系统操作」「办公文档」还带**页内页签**，点击与输入均可交互：
 
 | 案例 | 内容 | 关键能力 |
 |---|---|---|
@@ -318,11 +325,43 @@ ui.Button("组件库", func() {
 | 图表 | 折线 / 面积 / 柱状 / 饼 / 环形 / 雷达 / 散点（数据不变时 1 个 draw call） | `Chart` `ChartView` 命中与悬浮高亮 |
 | 文本与富文本 | Markdown 渲染（代码高亮 / 表格 / 公式 / Mermaid）+ 富文本显示与编辑器 | `Markdown` `RichText` `RichEditor` |
 | 系统操作 | 页签：系统能力（图片 / 拖入 / 毛玻璃 / IME / 动画）、WebView 浏览器 | `FileRow` `DropZone` `WebView` `Print` |
+| 办公文档 | 页签：**Excel**（表格渲染 / 排序 / 追加行 / 合计）、**Word**（标题 / 段落 / 列表 / 表格）、**PDF**（生成 / 解析 / 缩放 / 打印预览） | `office.Open` `SheetTable` `WordView` `PDFView` `ExportPDF` |
 
 ```bash
 go run ./cmd/gallery                       # 打开案例程序
 go run ./cmd/gallery --dump d.txt --case table   # 只跑指定案例并导出布局树
 ```
+
+
+## 官网站点（cmd/guis-site）
+
+`cmd/guis-site` 是 GUIS 的落地页：深色渐变 + 光斑背景、悬浮导航、平台/特性卡片、实时组件演示（开关 / 滑块 / 评分 / 图表 / 图标 / 色彩令牌），同一份代码同时编成桌面 exe 与 Web（WASM）。
+
+```bash
+go run ./cmd/guis-site          # 桌面预览
+pwsh ./build-site.ps1           # 构建到 dist/site，并起本地预览 http://127.0.0.1:8099/
+```
+
+站点排版约定（踩过的坑）：
+
+- 内容容器统一走 `container()`（最大 1180，窄屏 92%），页脚也用同一容器，避免贴边；
+- 卡片宽度用 `colW(列数, 间距)` 按容器宽反算，**不要写死像素**——写死后窄屏会顶出容器；
+- 图表要把宽高设在 `ui.ChartView` 节点本身，只套一层 `ui.Box` 限不住图表节点的高度（会溢出卡片）；
+- 整页根节点不要挂 `Clipped()`：根级裁剪会走图层路径，实测会让滚动到中段后的内容不再绘制；
+- 长滚动页建议 `ui.SetCacheLayers(false)`，自动图层缓存在滚动场景收益为负。
+
+### 主题与 API 文档（官网内置）
+
+- 顶栏右侧的主题胶囊循环切换 **深色 / 浅色 / 跟随系统**：站点配色走 `theme.go` 的调色板变量，框架组件（Markdown、按钮）跟着 `ui.UseTheme` 一起换，深色浅色不会打架。
+- 顶栏「API 文档」进入站内手册页：左侧按 `group` 分组的目录，右侧原生渲染 `docs/api/*.md`。这些 Markdown 由 `guis/docs` 的 `go:embed` 打进二进制，**离线可用、单文件分发自带全套文档**。
+- 调试入口：`?page=api&theme=light`（浏览器）、`GUIS_SITE_PAGE=api` + `GUIS_SITE_THEME=light`（桌面）。
+
+```bash
+pwsh ./build-linux.ps1                # 交叉编译 dist/guis-site-linux-amd64（单文件、静态链接）
+pwsh ./build-linux.ps1 -Arch arm64    # 其它架构
+```
+
+产物是 `CGO_ENABLED=0` 的静态 ELF，不依赖 glibc 版本，CentOS 7/8/9 直接 `chmod +x` 就能跑（需要 X11 图形会话；裸机缺中文字体时装 `wqy-zenhei-fonts`）。
 
 ## 布局系统
 
@@ -389,7 +428,7 @@ ui.St().
 ## 目录
 
 ```
-gogui/
+guis/
 ├── ui/            组件树、样式、布局、事件、主题、调试
 │   ├── app.go     窗口/事件循环/绘制
 │   ├── layout.go  measure + arrange
@@ -434,12 +473,13 @@ internal/text        fontplat_{windows,linux,darwin,android,ios}.go
 | Linux | X11（purego `libX11`）+ EGL + OpenGL 3.3 | ✅ 可运行（中文需 XIM，见下） |
 | macOS | Cocoa `NSWindow` + NSOpenGL 3.2 Core（purego objc_msgSend） | ✅ 已实现（交叉编译验证，实机待测） |
 | Web | canvas + WebGL 2 + WASM | ✅ 完整 |
-| Android | NativeActivity + EGL/GLES3 + AInputQueue（cgo） | ✅ 已实现（NDK 实测构建） |
+| Android | NativeActivity + EGL/GLES3 + AInputQueue（cgo） | ✅ 已实现（MuMu 模拟器实测：渲染 / 点击 / 拖动滚动正常） |
 | iOS | UIKit + EAGL/GLES3（cgo） | ⚠️ 已实现、待 Xcode 验证 |
 
 ```powershell
 ./build-multi.ps1            # 一次产出 windows / linux(amd64,arm64) / darwin(amd64,arm64) / wasm
-./build-android.ps1          # Android：dist/android/<abi>/libgogui.so（自动探测 NDK）
+./build-android.ps1          # Android：dist/android/<abi>/libguis.so（自动探测 NDK）
+./build-android-apk.ps1      # Android 应用包：dist/android-gallery/gallery.apk（已签名，4 个 ABI）
 ```
 
 能力差异用 `ui.HasCap` 查询后优雅降级（符号在所有平台都存在，缺失能力一律空操作，绝不 panic）：
@@ -534,13 +574,141 @@ ui.SaveFileDialog("保存", "文本|*.txt", "txt")
 
 多窗口共用一个 UI 线程与消息泵，每个窗口拥有独立 GL 上下文、字形图集与布局树；`ui.Current()` 返回当前活跃窗口，`App.Post` 可跨线程投递回调。托盘依附窗口的 `WM_TRAYICON` 消息，右键弹出 `TrackPopupMenu` 菜单。窗口全屏用 `App.SetFullscreen(true)` / `App.IsFullscreen()`（去标题栏 + 覆盖当前显示器，ESC 自动退出）。
 
+关闭收进托盘：`App.SetOnClose(func() bool { a.ShowWindow(false); return false })` 返回 false 即放弃本次 `WM_CLOSE`（窗口隐藏、不销毁，渲染循环随之跳过绘制）；从托盘恢复用 `App.Show()`（显示 + 置前），真正退出用 `App.Quit()`（跳过拦截）。
+
 窗口圆角：启动参数 `ui.Options.CornerRadius`（逻辑像素，0 = 系统默认）或运行中 `App.SetCornerRadius(14)`（`<=0` 取消）。Win11 走 DWM 原生圆角（`DWMWA_WINDOW_CORNER_PREFERENCE`，边缘平滑），DWM 不可用时自动回退 `CreateRoundRectRgn` + `SetWindowRgn` 区域圆角；窗口缩放/DPI 变化时区域自动重建，进入全屏自动取消、退出全屏恢复。无标题栏窗口（`NoTitleBar`）创建时还会把 `DWMWA_BORDER_COLOR` 置为 `DWMWA_COLOR_NONE`，去掉 DWM 默认绘制的 1px 白色系统边框（旧系统回退关闭 DWM 非客户区渲染）。
+
+### 系统级操作（标准目录 / 文件监听 / 任务栏 / 窗口特效 / 会话）
+
+```go
+// 标准目录（Windows 已知文件夹 / Linux XDG / macOS Apple 约定）
+ui.KnownFolder(ui.DirDownloads)
+cfg, _ := ui.EnsureFolder(ui.DirCache)
+
+// 文件/目录变更监听：Windows 走 ReadDirectoryChangesW，其它平台扫描兜底
+stop := ui.WatchDir(dir, ui.WatchOptions{Recursive: true}, func(evs []ui.FsEvent) {
+    for _, e := range evs { log.Println(e.String()) }
+})
+defer stop()
+
+// 原生消息框（崩溃兜底 / 无 GL 上下文时也能弹）
+ui.MessageBoxEx("删除", "不可撤销，继续？", ui.MsgWarn, ui.MsgBoxYesNo)
+
+// 系统信息 / 电源 / 会话
+info := ui.SystemInfo()          // OS / Locale / UserName / HostName / Elevated
+pw := ui.PowerState()            // OnBattery / Percent / Charging / ACOnline
+ui.SetLocale(ui.SystemLocale())  // i18n 默认跟随系统语言
+
+// 国际化：内置中文 / English（随二进制发布），六端同一套行为
+ui.AutoLocale()                  // 偏好 > 系统语言 > en-US
+ui.UseLocale("en-US")            // 切换并记住（写偏好 ui.locale）
+label := ui.T("ui.dialog.ok")    // 确定 / OK（缺失自动回退，不会露 key）
+msg := ui.Tn("ui.time.minutesAgo", 5)          // 5 分钟前 / 5 minutes ago（CLDR 复数）
+ui.LocaleNumber(1234.5, 1)       // 1,234.5 / 1.234,5 / ١٬٢٣٤٫٥
+ui.LocaleDate(time.Now(), "medium")            // 2026年11月6日 / Nov 6, 2026
+ui.LocaleSwitcher("set-lang")    // 现成的语言切换器组件
+ui.LoadCatalog("fr-FR", frJSON)  // 追加语言；RTL 语言（ar / he）自动镜像布局
+ui.LockScreen(); ui.Suspend(false)
+
+// 任务栏（Windows）
+ui.Current().SetTaskbarProgress(3, 10)
+ui.Current().SetBadge(5)
+ui.Current().Flash(3)
+
+// 窗口特效（Windows；其它平台是安全空操作）
+ui.Current().SetOpacity(0.94)
+ui.Current().SetClickThrough(true)      // 桌面宠物 / 悬浮挂件
+ui.Current().SetSkipTaskbar(true)
+ui.Current().SetDarkTitleBar(true)
+ui.Current().SetBackdrop(ui.BackdropMica)
+ui.Current().SetCaptureExcluded(true)   // 防截屏
+ui.Current().SetMinSize(720, 480)
+
+// 文件图标 / 缩略图 / 拖出
+icon, _ := ui.FileIcon(path, 32)
+thumb, _ := ui.FileThumbnail(path, 128, 128)
+ui.DragFiles([]string{path}, -1, -1)    // 拖到资源管理器 / 聊天窗口
+
+// 富文本剪贴板 + 键鼠模拟 + 快捷方式
+ui.ClipboardSetHTML("<b>粗体</b>")
+ui.SendText("自动填充的文本")
+ui.CreateShortcut(desktop+`\MyApp.lnk`, ui.ShellLink{Target: exe, Args: []string{"--tray"}})
+```
+
+全部能力都有对应 `Cap*` 位（`CapKnownFolders` / `CapFileWatch` / `CapTaskbar` / `CapWindowFX` /
+`CapSession` / `CapClipboardRich` / `CapInputSim` / `CapShellLink` …），业务用 `ui.HasCap` 决定
+是否显示入口；不支持时调用是**安全空操作**（返回零值或「不支持」错误），从不 panic。
+完整签名与平台矩阵见 `docs/api/70-system.md`、`docs/api/71-system-extra.md`。
+
+### 开机自启（当前用户级）
+
+```go
+spec := ui.AutoStartSpec{Name: "MyApp", Args: []string{"--tray"}} // --tray：登录后直接驻留托盘
+if ui.HasCap(ui.CapAutoStart) {
+    err := ui.SetAutoStart(true, spec)  // 开启；失败返回原因（如组策略禁止写 Run 键）
+}
+on := ui.AutoStartEnabled(spec)         // 直接读系统真实状态（不落本地配置）
+_ = ui.SetAutoStart(false, spec)        // 关闭
+```
+
+| 平台 | 落地位置 | 说明 |
+| --- | --- | --- |
+| Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` | 值名 = `Name`，值 = `"exe" 参数…`；任务管理器「启动应用」页可见、可禁用，无需管理员 |
+| Linux/BSD | `~/.config/autostart/<Name>.desktop` | XDG Autostart 规范，遵循 `$XDG_CONFIG_HOME`，`X-GNOME-Autostart-Delay=3` 等桌面就绪 |
+| macOS | `~/Library/LaunchAgents/<Name>.plist` | `RunAtLoad`；写入后尽力 `launchctl load -w`，失败也不影响下次登录生效 |
+| Web / Android / iOS | — | `HasCap(ui.CapAutoStart)` 为假，`SetAutoStart` 返回「不支持」错误，业务隐藏入口即可 |
+
+`Name` 缺省取可执行文件名（非 ASCII 安全字符归一化成 `-`，避免路径 / plist 解析问题）；命令默认指向当前 exe，绿色版 / 便携版可用环境变量 `GUIS_AUTOSTART_CMD`（如 `"D:\Apps\app.exe" --tray`）覆盖。所有写入都是当前用户级，关闭只需 `SetAutoStart(false)`。
+
+## 办公文档（Excel / Word / PDF）
+
+`internal/office` 是零依赖的办公文档读写层（只用标准库 `archive/zip` + `encoding/xml` + `compress/flate`），
+不依赖 Office / LibreOffice，也不引入任何第三方模块；`ui/office.go` 负责怼渲染、打印与导出。
+
+| 能力 | 入口 | 说明 |
+| --- | --- | --- |
+| 识别 / 统一入口 | `office.Detect` `office.Open` `office.Sniff` | 按扩展名 + 文件头判断，返回 `File{Kind, Sheet, Word, PDF}` |
+| Excel 读写 | `office.ReadXLSX` `office.WriteXLSX` | 多工作表 / 共享字符串 / inlineStr / 数值 / 日期格式 / 加粗表头 / 列宽；数据操作用 `Sheet.SortRowsBy` `Sheet.SumColumn` |
+| Word 读写 | `office.ReadDOCX` `office.WriteDOCX` | 标题（pStyle）/ 段落 / 列表 / 引用 / 表格；`TableFromSheet` `DocxFromSpreadsheet` 做跨格式转换 |
+| PDF 写入 | `office.WritePDF` | 按 pt 坐标绘制文本 / 线 / 矩形；自动找系统 TrueType 中文字体，**只嵌入用到的字形**（子集化，几百字约 20~60KB），并写 ToUnicode CMap（可复制、可检索） |
+| PDF 解析 | `office.ReadPDF` `office.PDFPageCount` | 扫描对象 → 页面树 → 内容流算子（Tf/Tm/Td/Tj/TJ）→ 用 /ToUnicode 还原 Unicode，产出带坐标的文本项 |
+| 渲染 | `ui.SheetTable` `ui.SpreadsheetView` `ui.WordView` `ui.PDFView` `ui.OfficeView` | Excel → 表格，Word → 文档流，PDF → 白纸 + 绝对定位文本（缩放始终清晰） |
+| 打印 / 导出 | `ui.OfficePrintable` `ui.ExportPDF` | 任意文档 → `Print` / `PrintPreview`；`ExportPDF` 把打印稿直接生成 PDF |
+
+```go
+// 读：按类型自动分派
+f, err := office.Open("报表.xlsx")   // .docx / .pdf 同理
+if err == nil {
+    ui.OfficeView("doc", f)          // 直接得到可渲染节点
+}
+
+// 写：生成带中文的 PDF（原点左上、Y 向下、单位 pt）
+pg := office.NewPDFPage(0, 0)        // A4 595×842
+pg.TextBold(56, 52, 22, "季度经营简报")
+pg.Rect(56, 116, 483, 54, 0, "", "#f1f5f9")
+pg.Line(56, 190, 539, 190, 1, "#e2e8f0")
+office.WritePDF("简报.pdf", &office.PDFDoc{Pages: []office.PDFPage{*pg}})
+
+// 打印预览 / 导出：同一份 Printable 三处复用
+doc := ui.OfficePrintable(f)
+ui.PrintPreview("preview", doc, 0.62)
+ui.ExportPDF("导出.pdf", "标题", doc)
+```
+
+字体选择顺序：`PDFOptions.FontPath` → 环境变量 `GUIS_PDF_FONT` → 系统候选（Windows `msyh.ttc` / `simhei.ttf`，
+macOS `PingFang.ttc`，Linux `wqy-zenhei.ttc` 等）；都找不到时回退内置 Helvetica（仅西文，中文显示为 `?`）。
+因为子集化器只支持 glyf 轮廓，纯 CFF 字体（如 `NotoSansCJK-Regular.ttc`）会被自动跳过。
+
+刻意不支持（保持体积与复杂度可控）：Excel 图表 / 透视表 / 公式计算（只读缓存值）、Word 图片 / 域代码 / 修订、
+PDF 加密文档与图片解码（预览画占位框）。xlsx / docx 输出已用 openpyxl / python-docx 校验，
+PDF 输出用 pypdf 严格模式校验（页面 / 文本 / 嵌入字体）。
 
 ## 已知限制
 
 - 富文本（行内混排 / 图文环绕）与竖排未实现
 - 图片节点按目标框拉伸绘制（无 cover 裁切），封面类场景建议用同比例图或渐变占位
 - 视频解码依赖外部 ffmpeg / ffprobe（子进程，大分辨率软解 CPU 占用较高）
+- 办公文档：xlsx 公式只读缓存值（不重新计算）、docx 图片与域代码不渲染、PDF 图片与矢量路径不进预览
 
 ## 视频播放器
 
@@ -595,10 +763,10 @@ p := ui.NewPlayer(clip)
 - **图片异步解码**：图片在后台 goroutine 解码（并发上限 4），UI 线程只做纹理上传，滚动到大量图片时不再卡顿。
 - **媒体**：帧环上限 48MB / 2 秒；ffmpeg 解码线程限制为 CPU 核数一半（2~4）。
 
-内存构成可用环境变量 `GOGUI_MEMSTATS=1` 观察（每 120 帧向 stderr 打印一次）：
+内存构成可用环境变量 `GUIS_MEMSTATS=1` 观察（每 120 帧向 stderr 打印一次）：
 
 ```
-[gogui] frames=120 heap=19.4MB inuse=20.6MB sys=27.7MB gc=2 fonts=13 atlas=3.2MB images=0
+[guis] frames=120 heap=19.4MB inuse=20.6MB sys=27.7MB gc=2 fonts=13 atlas=3.2MB images=0
 ```
 
 播放视频时的 ffmpeg 子进程：视频 1 个 + 音频 1 个（`MediaConfig.NoAudio` 或源无音轨时只有 1 个）；拖动进度时额外 1 个单帧预览进程，松手即退出。
@@ -636,7 +804,7 @@ return ui.Column(
 - **只落在节点矩形里**：每帧绘制时记录 WebView 节点的矩形，按 DPI 换算成物理像素后同步给浏览器子窗口；滚出视口 / 切页 / 隐藏后自动隐藏。
 - **离线页面**：`ui.NewWebView(ui.WebViewOptions{HTML: "<h1>hi</h1>"})` 或 `wv.LoadHTML(...)`。
 - **API**：`Navigate` / `LoadHTML` / `Back` / `Forward` / `Reload` / `Stop` / `Focus` / `SetZoom` / `ExecuteScript` / `URL` / `Title` / `Loading` / `CanGoBack` / `CanGoForward` / `Close`；`ui.WebViewAvailable()` 探测运行时。
-- **依赖**：系统 WebView2 运行时（Win11 自带，Win10 装 Evergreen Runtime）。`WebView2Loader.dll` 已 `//go:embed` 进二进制，无需外部文件；找不到文件时自动释放到 `%LOCALAPPDATA%\GoGUI\WebView2Loader\`。
+- **依赖**：系统 WebView2 运行时（Win11 自带，Win10 装 Evergreen Runtime）。`WebView2Loader.dll` 已 `//go:embed` 进二进制，无需外部文件；找不到文件时自动释放到 `%LOCALAPPDATA%\GUIS\WebView2Loader\`。
 - **圆角 / 裁剪**：`wv.SetRadius(12)` 会对网页子窗口做 `SetWindowRgn` 区域裁剪（真裁掉，不是遮罩），随尺寸/DPI 重建；`WebViewNode(...).St(St().R(12))` 只影响占位卡片外观。
 - **限制（HWND 托管）**：网页像素不进入 OpenGL 批次，因此**无法被菜单/Modal 遮挡**（浮层展开时组件会临时隐藏网页），也不能做 3D 变换。想同层混合需 DirectComposition 合成（B 阶段，进行中）。
 - **示例**：`go run ./cmd/gallery --case webview`。
@@ -644,11 +812,11 @@ return ui.Column(
 
 | 模式 | 触发 | 网页呈现 | 能被菜单盖住 | 圆角 | 交互 |
 |---|---|---|---|---|---|
-| **A · HWND 托管** | 默认（未设 `GOGUI_COMPOSE=1`） | Chromium 子窗口叠在 GL 内容上 | ❌（浮层展开时临时隐藏网页） | `SetWindowRgn` 硬裁剪 | 系统原生 |
-| **B · DComp 合成** | `GOGUI_COMPOSE=1` 且驱动支持 `WGL_NV_DX_interop2`（**实验性**） | 网页是 DirectComposition 图层，与 GL 输出同树 | ✅ | `IDCompositionRectangleClip` 抗锯齿 | 需转发鼠标（`SendMouseInput`） |
+| **A · HWND 托管** | 默认（未设 `GUIS_COMPOSE=1`） | Chromium 子窗口叠在 GL 内容上 | ❌（浮层展开时临时隐藏网页） | `SetWindowRgn` 硬裁剪 | 系统原生 |
+| **B · DComp 合成** | `GUIS_COMPOSE=1` 且驱动支持 `WGL_NV_DX_interop2`（**实验性**） | 网页是 DirectComposition 图层，与 GL 输出同树 | ✅ | `IDCompositionRectangleClip` 抗锯齿 | 需转发鼠标（`SendMouseInput`） |
 
 - B 模式**不需要 cgo**：DirectComposition 的 float 接口通过运行时机器码 trampoline（`movd xmm0,r8d`）调用。
-- 切换方式：默认 A；设 `GOGUI_COMPOSE=1` 尝试 B，失败自动回退 A。
+- 切换方式：默认 A；设 `GUIS_COMPOSE=1` 尝试 B，失败自动回退 A。
 - 实现要点：
   - `internal/win32/compose.go`：D3D11 设备 → `DCompositionCreateDevice` → 视觉树 → `IDCompositionSurface` → `BeginDraw/EndDraw`，GL 纹理经 `wglDXRegisterObjectNV` 绑定到 D3D11 纹理，零 CPU 拷贝。
   - `internal/gpu/renderer.go`：`SetTarget(fbo, w, h)` 支持离屏目标（B 模式下 `frame()` 先 `BeginFrame()` 再绘制）。

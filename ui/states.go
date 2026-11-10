@@ -1,11 +1,11 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
-import "gogui/internal/gpu"
+import "guis/internal/gpu"
 
 // 加载 / 空 / 错误三态与结果页。
 //
@@ -70,7 +70,7 @@ func LoadingOverlay(show bool, label string) *Node {
 // EmptyState 空状态：插画位（图标字形）+ 标题 + 说明 + 可选操作按钮。
 func EmptyState(icon, title, sub, actionLabel string, onAction func()) *Node {
 	if title == "" {
-		title = "暂无数据"
+		title = T("ui.state.empty")
 	}
 	if icon == "" {
 		icon = "◇"
@@ -94,19 +94,19 @@ func EmptyState(icon, title, sub, actionLabel string, onAction func()) *Node {
 func resultVisual(kind string) (glyph, color, title string) {
 	switch kind {
 	case "success":
-		return "✓", ColSuccess, "操作成功"
+		return "✓", ColSuccess, T("ui.state.success")
 	case "warn":
-		return "!", ColWarn, "需要注意"
+		return "!", ColWarn, T("ui.state.warning")
 	case "error", "fail":
-		return "×", ColDanger, "操作失败"
+		return "×", ColDanger, T("ui.state.failure")
 	case "403":
-		return "⚿", ColWarn, "无权访问"
+		return "⚿", ColWarn, T("ui.state.forbidden")
 	case "404":
-		return "?", ColInfo, "页面不存在"
+		return "?", ColInfo, T("ui.state.notFound")
 	case "500":
-		return "!", ColDanger, "服务器错误"
+		return "!", ColDanger, T("ui.state.serverError")
 	}
-	return "i", ColInfo, "提示"
+	return "i", ColInfo, T("ui.state.info")
 }
 
 // ResultPage 整页结果反馈（成功 / 失败 / 警示 / 404 / 500）。
@@ -137,20 +137,20 @@ func AsyncSection(loading bool, errMsg string, empty bool, onRetry func(), body 
 	case loading:
 		return Column(
 			SkeletonText(3, 320),
-			Row(Spinner(16, ColPrimary), Text("加载中…").St(St().Text(12, 400, ColTextMuted))).
+			Row(Spinner(16, ColPrimary), Text(T("ui.state.loading")).St(St().Text(12, 400, ColTextMuted))).
 				St(St().GapOf(8).MarOnly(14, 0, 0, 0)).AlignTo(AlignCenter),
 		).St(St().GapOf(8).Padding(20))
 	case errMsg != "":
 		col := Column(
-			Text("加载失败").St(St().Text(14, 600, ColDanger)),
+			Text(T("ui.state.loadFailed")).St(St().Text(14, 600, ColDanger)),
 			Text(errMsg).St(St().Text(12, 400, ColTextMuted).WrapOn()),
 		).St(St().GapOf(8).Padding(24)).AlignTo(AlignCenter)
 		if onRetry != nil {
-			col.Add(Btn("重试", BtnSecondary, onRetry))
+			col.Add(Btn(T("ui.state.retry"), BtnSecondary, onRetry))
 		}
 		return col
 	case empty:
-		return EmptyState("", "暂无数据", "换个筛选条件试试", "", nil)
+		return EmptyState("", T("ui.state.empty"), T("ui.state.emptyHint"), "", nil)
 	}
 	if body == nil {
 		return nil

@@ -1,0 +1,878 @@
+{
+  "version": 1,
+  "source": "https://github.com/PC2005-cloud/dsh-pet",
+  "anims": [
+    {
+      "id": "beiluoye-yanmo",
+      "name": "被落叶淹没",
+      "file": "beiluoye-yanmo.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "beishubiao-tuozhuai-xuankong-fankui",
+      "name": "被拖拽悬空",
+      "file": "beishubiao-tuozhuai-xuankong-fankui.gif",
+      "group": "drag",
+      "weight": 10,
+      "loop": true
+    },
+    {
+      "id": "beixiayitiao-zhamao",
+      "name": "被吓一跳",
+      "file": "beixiayitiao-zhamao.gif",
+      "group": "action",
+      "weight": 4,
+      "loop": false
+    },
+    {
+      "id": "bian-gezi",
+      "name": "变鸽子",
+      "file": "bian-gezi.gif",
+      "group": "play",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "cha-zhuyu-shangju",
+      "name": "插茱萸赏菊",
+      "file": "cha-zhuyu-shangju.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "chai-liwu",
+      "name": "拆礼物",
+      "file": "chai-liwu.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "chaoda-shenlanyao",
+      "name": "超大伸懒腰",
+      "file": "chaoda-shenlanyao.gif",
+      "group": "action",
+      "weight": 6,
+      "loop": false
+    },
+    {
+      "id": "chenjian-shuaya",
+      "name": "晨间刷牙",
+      "file": "chenjian-shuaya.gif",
+      "group": "action",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "chi-baifan",
+      "name": "吃白饭",
+      "file": "chi-baifan.gif",
+      "group": "eat",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "chi-bingqilin-ronghua",
+      "name": "冰淇淋融化",
+      "file": "chi-bingqilin-ronghua.gif",
+      "group": "eat",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "chi-changshoumian",
+      "name": "吃长寿面",
+      "file": "chi-changshoumian.gif",
+      "group": "eat",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "chi-chongyanggao",
+      "name": "吃重阳糕",
+      "file": "chi-chongyanggao.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "chi-dazhaxie",
+      "name": "吃大闸蟹",
+      "file": "chi-dazhaxie.gif",
+      "group": "eat",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "chi-labazhou",
+      "name": "吃腊八粥",
+      "file": "chi-labazhou.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "chi-niangao",
+      "name": "吃年糕",
+      "file": "chi-niangao.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "chi-qingtuan",
+      "name": "吃青团",
+      "file": "chi-qingtuan.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "chi-tanghulu",
+      "name": "吃糖葫芦",
+      "file": "chi-tanghulu.gif",
+      "group": "eat",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "chi-token",
+      "name": "吃Token",
+      "file": "chi-token.gif",
+      "group": "eat",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "chi-wancan",
+      "name": "吃晚餐",
+      "file": "chi-wancan.gif",
+      "group": "eat",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "chi-wucan",
+      "name": "吃午餐",
+      "file": "chi-wucan.gif",
+      "group": "eat",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "chi-xigua",
+      "name": "吃西瓜",
+      "file": "chi-xigua.gif",
+      "group": "eat",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "chi-zaocan",
+      "name": "吃早餐",
+      "file": "chi-zaocan.gif",
+      "group": "eat",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "chi-zongzi",
+      "name": "吃粽子",
+      "file": "chi-zongzi.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "chijiaozi",
+      "name": "吃饺子",
+      "file": "chijiaozi.gif",
+      "group": "eat",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "chitangyuan",
+      "name": "吃汤圆",
+      "file": "chitangyuan.gif",
+      "group": "eat",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "chou-tuoluo",
+      "name": "抽陀螺",
+      "file": "chou-tuoluo.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "chuanzhenqiqiao",
+      "name": "穿针乞巧",
+      "file": "chuanzhenqiqiao.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "chui-dizi",
+      "name": "吹笛子",
+      "file": "chui-dizi.gif",
+      "group": "play",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "chui-qiqiu",
+      "name": "吹气球",
+      "file": "chui-qiqiu.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "da-keshui-bei-jingxing",
+      "name": "瞌睡惊醒",
+      "file": "da-keshui-bei-jingxing.gif",
+      "group": "action",
+      "weight": 4,
+      "loop": false
+    },
+    {
+      "id": "dai-kong-ru-xi",
+      "name": "余额-袋空如洗",
+      "file": "dai-kong-ru-xi.gif",
+      "group": "balance",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "daiji-huxi-xiuxian",
+      "name": "待机呼吸",
+      "file": "daiji-huxi-xiuxian.gif",
+      "group": "idle",
+      "weight": 40,
+      "loop": true
+    },
+    {
+      "id": "dakou-chi-lingshi",
+      "name": "大口吃零食",
+      "file": "dakou-chi-lingshi.gif",
+      "group": "eat",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "dangqiuqian",
+      "name": "荡秋千",
+      "file": "dangqiuqian.gif",
+      "group": "play",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "dianji-huiying-aojiao-shengqi-ceshen-zhanshi",
+      "name": "点击-傲娇生气",
+      "file": "dianji-huiying-aojiao-shengqi-ceshen-zhanshi.gif",
+      "group": "click",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "dianji-huiying-haixiu-jingya",
+      "name": "点击-害羞惊讶",
+      "file": "dianji-huiying-haixiu-jingya.gif",
+      "group": "click",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "dianji-huiying-kaixin-yuedong",
+      "name": "点击-开心跃动",
+      "file": "dianji-huiying-kaixin-yuedong.gif",
+      "group": "click",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "dianji-huiying-naoyang-gegexiao",
+      "name": "点击-挠痒咯咯笑",
+      "file": "dianji-huiying-naoyang-gegexiao.gif",
+      "group": "click",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "dianji-huiying-yuanqi-huishou",
+      "name": "点击-元气挥手",
+      "file": "dianji-huiying-yuanqi-huishou.gif",
+      "group": "click",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "dongwu-huanrao",
+      "name": "动物环绕",
+      "file": "dongwu-huanrao.gif",
+      "group": "play",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "dongzhangxiwang",
+      "name": "东张西望",
+      "file": "dongzhangxiwang.gif",
+      "group": "idle",
+      "weight": 20,
+      "loop": true
+    },
+    {
+      "id": "duixueren",
+      "name": "堆雪人",
+      "file": "duixueren.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "fang-fengzheng",
+      "name": "放风筝",
+      "file": "fang-fengzheng.gif",
+      "group": "play",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "fang-kongmingdeng",
+      "name": "放孔明灯",
+      "file": "fang-kongmingdeng.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "fang-yanhua",
+      "name": "放烟花",
+      "file": "fang-yanhua.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "fanghedeng",
+      "name": "放河灯",
+      "file": "fanghedeng.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "fen-wen-bu-sheng",
+      "name": "余额-分文不剩",
+      "file": "fen-wen-bu-sheng.gif",
+      "group": "balance",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "gongzuozhuangtai-chuitou-tanqi-maohan",
+      "name": "工作-出错",
+      "file": "gongzuozhuangtai-chuitou-tanqi-maohan.gif",
+      "group": "workError",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "gongzuozhuangtai-manglu-dianan",
+      "name": "工作-忙碌",
+      "file": "gongzuozhuangtai-manglu-dianan.gif",
+      "group": "workBusy",
+      "weight": 10,
+      "loop": true
+    },
+    {
+      "id": "gongzuozhuangtai-qingdian-guidang",
+      "name": "工作-整理归档",
+      "file": "gongzuozhuangtai-qingdian-guidang.gif",
+      "group": "workTidy",
+      "weight": 10,
+      "loop": true
+    },
+    {
+      "id": "gongzuozhuangtai-queyue-qingzhu",
+      "name": "工作-成功",
+      "file": "gongzuozhuangtai-queyue-qingzhu.gif",
+      "group": "workDone",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "gongzuozhuangtai-sikao-maopao",
+      "name": "工作-思考",
+      "file": "gongzuozhuangtai-sikao-maopao.gif",
+      "group": "workThink",
+      "weight": 10,
+      "loop": true
+    },
+    {
+      "id": "gongzuozhuangtai-yuandi-duobu-zhangwang",
+      "name": "工作-等待张望",
+      "file": "gongzuozhuangtai-yuandi-duobu-zhangwang.gif",
+      "group": "workWait",
+      "weight": 10,
+      "loop": true
+    },
+    {
+      "id": "haqian-liantian",
+      "name": "哈欠连天",
+      "file": "haqian-liantian.gif",
+      "group": "action",
+      "weight": 6,
+      "loop": false
+    },
+    {
+      "id": "hudie-mifeng-huanrao-touding-kaihua",
+      "name": "蝶蜂开花",
+      "file": "hudie-mifeng-huanrao-touding-kaihua.gif",
+      "group": "play",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "jin-dai-ding-dang",
+      "name": "余额-金袋叮当",
+      "file": "jin-dai-ding-dang.gif",
+      "group": "balance",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "jingyu-tu-paopao-texiao",
+      "name": "鲸鱼吐泡泡",
+      "file": "jingyu-tu-paopao-texiao.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "keai-zhaiwu",
+      "name": "可爱宅舞",
+      "file": "keai-zhaiwu.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "lanjing-xianshi",
+      "name": "蓝鲸现世",
+      "file": "lanjing-xianshi.gif",
+      "group": "play",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "lu-mao",
+      "name": "撸猫",
+      "file": "lu-mao.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "menghua-xiaoyouling",
+      "name": "萌化小幽灵",
+      "file": "menghua-xiaoyouling.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "nvpu-quxi-liyi",
+      "name": "屈膝礼仪",
+      "file": "nvpu-quxi-liyi.gif",
+      "group": "action",
+      "weight": 4,
+      "loop": false
+    },
+    {
+      "id": "pangxie-zoulu",
+      "name": "螃蟹走路",
+      "file": "pangxie-zoulu.gif",
+      "group": "move",
+      "weight": 12,
+      "loop": true
+    },
+    {
+      "id": "pingkong-shenghua",
+      "name": "凭空生花",
+      "file": "pingkong-shenghua.gif",
+      "group": "play",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "puke-moshu",
+      "name": "扑克魔术",
+      "file": "puke-moshu.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "qi-muma",
+      "name": "骑木马",
+      "file": "qi-muma.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "qian-dai-man-yi",
+      "name": "余额-钱袋满溢",
+      "file": "qian-dai-man-yi.gif",
+      "group": "balance",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "qian-dai-ru-chang",
+      "name": "余额-钱袋如常",
+      "file": "qian-dai-ru-chang.gif",
+      "group": "balance",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "qingkuai-jilu",
+      "name": "轻快记录",
+      "file": "qingkuai-jilu.gif",
+      "group": "action",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "qingkuai-yaobaiwu",
+      "name": "轻快摇摆舞",
+      "file": "qingkuai-yaobaiwu.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "sanqiu-paojie",
+      "name": "三球抛接",
+      "file": "sanqiu-paojie.gif",
+      "group": "play",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "shendu-sikao-suisuinian",
+      "name": "深度思考碎碎念",
+      "file": "shendu-sikao-suisuinian.gif",
+      "group": "talk",
+      "weight": 6,
+      "loop": false
+    },
+    {
+      "id": "shia-chishenme",
+      "name": "是啊吃什么",
+      "file": "shia-chishenme.gif",
+      "group": "talk",
+      "weight": 6,
+      "loop": false
+    },
+    {
+      "id": "shou-hongbao",
+      "name": "收红包",
+      "file": "shou-hongbao.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "shu-jin-zhou-mei",
+      "name": "余额-数金皱眉",
+      "file": "shu-jin-zhou-mei.gif",
+      "group": "balance",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "shuan-huoguo",
+      "name": "涮火锅",
+      "file": "shuan-huoguo.gif",
+      "group": "eat",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "shuijiao-kaishi",
+      "name": "睡觉-开始",
+      "file": "shuijiao-kaishi.gif",
+      "group": "sleepIn",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "shuijiao-qilai",
+      "name": "睡觉-起来",
+      "file": "shuijiao-qilai.gif",
+      "group": "sleepOut",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "shuijiao-xunhuan",
+      "name": "睡觉-循环",
+      "file": "shuijiao-xunhuan.gif",
+      "group": "sleep",
+      "weight": 10,
+      "loop": true
+    },
+    {
+      "id": "suisuinian-cazhuo-suisuinian",
+      "name": "擦桌碎碎念",
+      "file": "suisuinian-cazhuo-suisuinian.gif",
+      "group": "talk",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "suisuinian-duiping-suisuinian",
+      "name": "对屏碎碎念",
+      "file": "suisuinian-duiping-suisuinian.gif",
+      "group": "talk",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "suisuinian-fadai-suisuinian",
+      "name": "发呆碎碎念",
+      "file": "suisuinian-fadai-suisuinian.gif",
+      "group": "talk",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "taotang-nanguadeng",
+      "name": "讨糖南瓜灯",
+      "file": "taotang-nanguadeng.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "ti-jianzi",
+      "name": "踢毽子",
+      "file": "ti-jianzi.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "touchi-lingshi-bei-zhuazhu",
+      "name": "偷吃被抓",
+      "file": "touchi-lingshi-bei-zhuazhu.gif",
+      "group": "action",
+      "weight": 4,
+      "loop": false
+    },
+    {
+      "id": "wan-shuiqiang",
+      "name": "玩水枪",
+      "file": "wan-shuiqiang.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "wan-youxi-qijibaituai",
+      "name": "玩游戏气急",
+      "file": "wan-youxi-qijibaituai.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "wu-shitou",
+      "name": "舞狮头",
+      "file": "wu-shitou.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "xiaofudu-yuandi-360du-xuanzhuan-zhanshi",
+      "name": "360度展示",
+      "file": "xiaofudu-yuandi-360du-xuanzhuan-zhanshi.gif",
+      "group": "action",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "xiaotiqin-yanzou",
+      "name": "小提琴演奏",
+      "file": "xiaotiqin-yanzou.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "xiawuziqi",
+      "name": "下五子棋",
+      "file": "xiawuziqi.gif",
+      "group": "play",
+      "weight": 2,
+      "loop": false
+    },
+    {
+      "id": "xie-daima",
+      "name": "写代码",
+      "file": "xie-daima.gif",
+      "group": "workBusy",
+      "weight": 4,
+      "loop": true
+    },
+    {
+      "id": "xie-fuzi",
+      "name": "写福字",
+      "file": "xie-fuzi.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "yaoshan-naliang",
+      "name": "摇扇纳凉",
+      "file": "yaoshan-naliang.gif",
+      "group": "action",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "yong-jingyu-weiba-paidadi",
+      "name": "尾巴拍地",
+      "file": "yong-jingyu-weiba-paidadi.gif",
+      "group": "action",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "youxian-hengga",
+      "name": "悠闲哼歌",
+      "file": "youxian-hengga.gif",
+      "group": "idle",
+      "weight": 10,
+      "loop": false
+    },
+    {
+      "id": "youya-nvpuwu",
+      "name": "优雅女仆舞",
+      "file": "youya-nvpuwu.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "yuandi-dunxia-wan-wanju-qiche",
+      "name": "玩玩具汽车",
+      "file": "yuandi-dunxia-wan-wanju-qiche.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "yuandi-piaofu-tabu",
+      "name": "漂浮踏步",
+      "file": "yuandi-piaofu-tabu.gif",
+      "group": "move",
+      "weight": 10,
+      "loop": true
+    },
+    {
+      "id": "yuandi-qiaoji-zhuomian-hudong",
+      "name": "敲击桌面",
+      "file": "yuandi-qiaoji-zhuomian-hudong.gif",
+      "group": "action",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "yuandi-tiaoyue-zhuasui-touding-wupin",
+      "name": "跳跃抓碎",
+      "file": "yuandi-tiaoyue-zhuasui-touding-wupin.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "yuandi-xiaoqi-chenmian",
+      "name": "原地小憩",
+      "file": "yuandi-xiaoqi-chenmian.gif",
+      "group": "action",
+      "weight": 6,
+      "loop": false
+    },
+    {
+      "id": "yuandi-zhongli-xiadun-yasuo",
+      "name": "重力下蹲",
+      "file": "yuandi-zhongli-xiadun-yasuo.gif",
+      "group": "action",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "yuandi-zhuanxin-wan-mofang",
+      "name": "玩魔方",
+      "file": "yuandi-zhuanxin-wan-mofang.gif",
+      "group": "play",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "yuandi-zuozhuan-benpao",
+      "name": "原地奔跑",
+      "file": "yuandi-zuozhuan-benpao.gif",
+      "group": "move",
+      "weight": 8,
+      "loop": true
+    },
+    {
+      "id": "zhao-jingzi",
+      "name": "照镜子",
+      "file": "zhao-jingzi.gif",
+      "group": "action",
+      "weight": 4,
+      "loop": false
+    },
+    {
+      "id": "zhengti-huanzhuang-shise",
+      "name": "换装试色",
+      "file": "zhengti-huanzhuang-shise.gif",
+      "group": "action",
+      "weight": 3,
+      "loop": false
+    },
+    {
+      "id": "zhongqiu-shangyue-chi-yuebing",
+      "name": "中秋赏月",
+      "file": "zhongqiu-shangyue-chi-yuebing.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    },
+    {
+      "id": "zhuangdian-shengdanshu",
+      "name": "装点圣诞树",
+      "file": "zhuangdian-shengdanshu.gif",
+      "group": "festival",
+      "weight": 1,
+      "loop": false
+    }
+  ]
+}

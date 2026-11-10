@@ -1,14 +1,17 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
 import (
 	"errors"
+	"fmt"
+	"runtime"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -19,8 +22,13 @@ import (
 
 var (
 	comdlg32 = syscall.NewLazyDLL("comdlg32.dll")
+	winspool = syscall.NewLazyDLL("winspool.drv")
 
 	procPrintDlgW        = comdlg32.NewProc("PrintDlgW")
+	procComDlgExtErr     = comdlg32.NewProc("CommDlgExtendedError")
+	procGetDefaultPrinterW = winspool.NewProc("GetDefaultPrinterW")
+	procEnumPrintersW      = winspool.NewProc("EnumPrintersW")
+	procCreateDCW          = gdi32.NewProc("CreateDCW")
 	procStartDocW        = gdi32.NewProc("StartDocW")
 	procStartPage        = gdi32.NewProc("StartPage")
 	procEndPage          = gdi32.NewProc("EndPage")
@@ -79,7 +87,6 @@ type printDlgW struct {
 	LCustData      uintptr
 	LpfnHook       uintptr
 	LpTemplateName *uint16
-	DwResultAction uint32
 }
 
 var nullBrush = ^uintptr(0)
@@ -104,6 +111,11 @@ func PrintDialog(owner uintptr, title string, pages int, draw func(dc uintptr, p
 	}
 	r, _, _ := procPrintDlgW.Call(uintptr(unsafe.Pointer(&pd)))
 	if r == 0 {
+		// 0 可能是用户取消（CommDlgExtendedError 也为 0），也可能是对话框没弹出就直接失败：
+		// 后者必须报错，否则调用方会表现得「点了没反应」。
+		if e, _, _ := procComDlgExtErr.Call(); e != 0 {
+			return false, fmt.Errorf("win32: 打印对话框无法打开（%s）", comDlgErrText(uint32(e)))
+		}
 		return false, nil
 	}
 	if pd.HDC == 0 {
@@ -111,17 +123,22 @@ func PrintDialog(owner uintptr, title string, pages int, draw func(dc uintptr, p
 	}
 	defer procDeleteDC.Call(pd.HDC)
 
+	return runPrintJob(pd.HDC, title, pages, draw)
+}
+
+// runPrintJob 在已拿到的打印机 DC 上把 pages 页画出去（StartDoc → StartPage … → EndDoc）。
+func runPrintJob(hdc uintptr, title string, pages int, draw func(dc uintptr, page int, info PrintInfo) bool) (bool, error) {
 	info := PrintInfo{}
-	if v, _, _ := procGetDeviceCaps.Call(pd.HDC, logPixelsX); v != 0 {
+	if v, _, _ := procGetDeviceCaps.Call(hdc, logPixelsX); v != 0 {
 		info.DPIx = int(v)
 	}
-	if v, _, _ := procGetDeviceCaps.Call(pd.HDC, logPixelsY); v != 0 {
+	if v, _, _ := procGetDeviceCaps.Call(hdc, logPixelsY); v != 0 {
 		info.DPIy = int(v)
 	}
-	if v, _, _ := procGetDeviceCaps.Call(pd.HDC, physWidth); v != 0 {
+	if v, _, _ := procGetDeviceCaps.Call(hdc, physWidth); v != 0 {
 		info.PageW = int(v)
 	}
-	if v, _, _ := procGetDeviceCaps.Call(pd.HDC, physHeight); v != 0 {
+	if v, _, _ := procGetDeviceCaps.Call(hdc, physHeight); v != 0 {
 		info.PageH = int(v)
 	}
 	if info.DPIx <= 0 {
@@ -133,26 +150,141 @@ func PrintDialog(owner uintptr, title string, pages int, draw func(dc uintptr, p
 
 	t, _ := syscall.UTF16PtrFromString(title)
 	di := docInfoW{CbSize: int32(unsafe.Sizeof(docInfoW{})), LpszDocName: t}
-	if r, _, err := procStartDocW.Call(pd.HDC, uintptr(unsafe.Pointer(&di))); int32(r) <= 0 {
+	if r, _, err := procStartDocW.Call(hdc, uintptr(unsafe.Pointer(&di))); int32(r) <= 0 {
 		return false, errors.New("win32: StartDoc 失败: " + errText(err))
 	}
-	defer procEndDoc.Call(pd.HDC)
+	defer procEndDoc.Call(hdc)
 	for p := 0; p < pages; p++ {
-		if r, _, _ := procStartPage.Call(pd.HDC); int32(r) <= 0 {
-			procAbortDoc.Call(pd.HDC)
+		if r, _, _ := procStartPage.Call(hdc); int32(r) <= 0 {
+			procAbortDoc.Call(hdc)
 			return false, errors.New("win32: StartPage 失败")
 		}
 		ok := true
 		if draw != nil {
-			ok = draw(pd.HDC, p, info)
+			ok = draw(hdc, p, info)
 		}
-		procEndPage.Call(pd.HDC)
+		procEndPage.Call(hdc)
 		if !ok {
-			procAbortDoc.Call(pd.HDC)
+			procAbortDoc.Call(hdc)
 			return false, nil
 		}
 	}
 	return true, nil
+}
+
+// PrintTo 不弹对话框，直接打印到指定打印机。
+// 用于系统打印对话框不可用（PrintDlgW 返回 CDERR_DIALOGFAILURE）的环境。
+func PrintTo(printer, title string, pages int, draw func(dc uintptr, page int, info PrintInfo) bool) (bool, error) {
+	name := strings.TrimSpace(printer)
+	if name == "" {
+		return false, errors.New("win32: 未指定打印机")
+	}
+	if pages <= 0 {
+		pages = 1
+	}
+	driver := mustUTF16("WINSPOOL")
+	device, err := syscall.UTF16FromString(name)
+	if err != nil {
+		return false, fmt.Errorf("win32: 打印机名称非法: %v", err)
+	}
+	dc, _, callErr := procCreateDCW.Call(
+		uintptr(unsafe.Pointer(&driver[0])),
+		uintptr(unsafe.Pointer(&device[0])), 0, 0)
+	runtime.KeepAlive(driver)
+	runtime.KeepAlive(device)
+	if dc == 0 {
+		return false, fmt.Errorf("win32: 打开打印机 %q 失败: %s", name, errText(callErr))
+	}
+	defer procDeleteDC.Call(dc)
+	return runPrintJob(dc, title, pages, draw)
+}
+
+// DefaultPrinter 默认打印机名（没有则空串）。
+func DefaultPrinter() string {
+	n := uint32(0)
+	procGetDefaultPrinterW.Call(0, uintptr(unsafe.Pointer(&n)))
+	if n == 0 {
+		return ""
+	}
+	buf := make([]uint16, n)
+	if r, _, _ := procGetDefaultPrinterW.Call(uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(unsafe.Pointer(&n))); r == 0 {
+		return ""
+	}
+	return syscall.UTF16ToString(buf)
+}
+
+// printerInfo4 EnumPrinters 的 level 4 条目（名称 / 服务器 / 属性）。
+type printerInfo4 struct {
+	PrinterName *uint16
+	ServerName  *uint16
+	Attributes  uint32
+}
+
+// Printers 枚举本机与已连接的打印机名（默认打印机排在第一位）。
+func Printers() []string {
+	const (
+		printerEnumLocal       = 0x00000002
+		printerEnumConnections = 0x00000004
+	)
+	flags := uintptr(printerEnumLocal | printerEnumConnections)
+	needed, returned := uint32(0), uint32(0)
+	procEnumPrintersW.Call(flags, 0, 4, 0, 0,
+		uintptr(unsafe.Pointer(&needed)), uintptr(unsafe.Pointer(&returned)))
+	if needed == 0 {
+		return nil
+	}
+	buf := make([]byte, needed)
+	if r, _, _ := procEnumEnumPrintersCall(flags, buf, &needed, &returned); r == 0 || returned == 0 {
+		return nil
+	}
+	items := unsafe.Slice((*printerInfo4)(unsafe.Pointer(&buf[0])), int(returned))
+	names := make([]string, 0, len(items))
+	seen := make(map[string]bool, len(items))
+	for _, it := range items {
+		name := utf16PtrString(it.PrinterName)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	runtime.KeepAlive(buf)
+	// 默认打印机前置，界面上第一项就是「直接回车打印」的那台。
+	if def := DefaultPrinter(); def != "" {
+		for i, n := range names {
+			if n == def && i > 0 {
+				names[0], names[i] = names[i], names[0]
+				break
+			}
+		}
+	}
+	return names
+}
+
+// utf16PtrString 读 NUL 结尾的 UTF-16 字符串（最多 1024 字符，遇到 NUL 即停）。
+func utf16PtrString(p *uint16) string {
+	if p == nil {
+		return ""
+	}
+	n := 0
+	for n < 1024 {
+		if *(*uint16)(unsafe.Add(unsafe.Pointer(p), uintptr(n)*2)) == 0 {
+			break
+		}
+		n++
+	}
+	if n == 0 {
+		return ""
+	}
+	return syscall.UTF16ToString(unsafe.Slice(p, n))
+}
+
+// procEnumEnumPrintersCall 第二趟 EnumPrintersW（带缓冲区）。
+func procEnumEnumPrintersCall(flags uintptr, buf []byte, needed, returned *uint32) (uintptr, uintptr, error) {
+	return procEnumPrintersW.Call(flags, 0, 4,
+		uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)),
+		uintptr(unsafe.Pointer(needed)), uintptr(unsafe.Pointer(returned)))
 }
 
 // PagePixels 按打印机 DPI 换算页面像素尺寸（GDI 坐标单位）。
@@ -253,6 +385,37 @@ func rgbRef(r, g, b int) uint32 {
 func mustUTF16(s string) []uint16 {
 	p, _ := syscall.UTF16FromString(s)
 	return p
+}
+
+// comDlgErrText 把 CommDlgExtendedError 的值翻成可读文案（只列常见项）。
+func comDlgErrText(code uint32) string {
+	switch code {
+	case 1:
+		return "CDERR_DIALOGFAILURE: 对话框创建失败，系统打印对话框不可用"
+	case 2:
+		return "CDERR_GENERALCODES"
+	case 4:
+		return "CDERR_STRUCTSIZE: 结构体大小不合法"
+	case 5:
+		return "CDERR_INITIALIZATION: 初始化失败"
+	case 6:
+		return "CDERR_NOHINSTANCE: 缺少 hInstance"
+	case 7:
+		return "CDERR_NOHOOK"
+	case 0x1002:
+		return "PDERR_SETUPFAILURE: 打印机未正确安装"
+	case 0x1005:
+		return "PDERR_NODEFAULTPRN: 没有默认打印机"
+	case 0x1008:
+		return "PDERR_DNDMMISMATCH: DEVMODE 与 DEVNAMES 不匹配"
+	case 0x1009:
+		return "PDERR_CREATEICFAILURE: 创建打印机 DC 失败"
+	case 0x100A:
+		return "PDERR_PRINTERNOTFOUND: 找不到打印机"
+	case 0x100C:
+		return "PDERR_DEFAULTDIFFERENT: 默认打印机不一致"
+	}
+	return fmt.Sprintf("CommDlgExtendedError=0x%x", code)
 }
 
 func errText(err error) string {

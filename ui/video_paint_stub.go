@@ -1,14 +1,14 @@
 //go:build !windows && !js && (!(linux || freebsd) || android)
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
-	"gogui/internal/geom"
+	"guis/internal/geom"
 )
 
 // 视频绘制垫片：macOS / iOS / Android 等平台尚无解码后端，

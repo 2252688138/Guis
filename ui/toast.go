@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -19,6 +19,21 @@ package ui
 
 // ToastDefaultSeconds 轻提示默认显示时长（秒）。
 const ToastDefaultSeconds float32 = 2
+
+// toastBottom 轻提示距窗口底部的距离（px，默认 24）。
+//
+// 页面底部有常驻输入卡片时（如 deepseek 的 Composer），24px 会让提示压在卡片上，
+// 应用可在启动时用 SetToastBottom 把它抬到卡片上方。
+var toastBottom float32 = 24
+
+// SetToastBottom 调整轻提示距窗口底部的距离（px）。
+func SetToastBottom(px float32) {
+	if px < 0 {
+		px = 0
+	}
+	toastBottom = px
+	RequestRedraw()
+}
 
 // toastState 当前轻提示状态（UI 线程独占，无需加锁）。
 var toastState struct {

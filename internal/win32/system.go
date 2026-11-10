@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
@@ -27,11 +27,16 @@ var SHFileOperationW func(op *SHFILEOPSTRUCTW) int32
 // 阻止休眠 / 屏幕常亮（SetThreadExecutionState）
 var SetThreadExecutionState func(flags uint32) uint32
 
-// 注册表读取（系统深浅色）
+// 注册表读写（系统深浅色 / 持久化环境变量）
 var (
 	RegOpenKeyExW    func(hkey uintptr, sub *uint16, opt, access uint32, phk *uintptr) int32
 	RegQueryValueExW func(hkey uintptr, name *uint16, reserved *uint32, typ *uint32, data *byte, cb *uint32) int32
+	RegSetValueExW   func(hkey uintptr, name *uint16, reserved uint32, typ uint32, data *byte, cb uint32) int32
+	RegDeleteValueW  func(hkey uintptr, name *uint16) int32
 	RegCloseKey      func(hkey uintptr) int32
+	// RegCreateKeyExW 供「开机自启」写入 Run 键（键不存在时自动创建）
+	RegCreateKeyExW func(hkey uintptr, sub *uint16, reserved uint32, class *uint16,
+		options, access uint32, sa uintptr, phk *uintptr, disp *uint32) int32
 )
 
 // ---- 物理内存回收 ----

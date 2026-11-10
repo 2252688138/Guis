@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gogui/internal/gpu"
+	"guis/internal/gpu"
 )
 
 // 组件库：在基础节点（Box/Row/Column/Stack/Text/Button）之上组合出的控件。
@@ -85,6 +85,14 @@ func Link(label string, onClick func()) *Node {
 
 // KeyValue 左标题右值的一行。
 func KeyValue(k, v string) *Node {
+	// 窄屏（手机逻辑宽度 ≈ 480）：左右排会把 value 挤到屏幕外被裁掉，
+	// 改成上下堆叠 + 值折行。桌面窗口（≥640）保持原样。
+	if ViewportW() < 640 {
+		return Column(
+			Text(k).St(St().Text(11.5, 400, ColTextMuted)),
+			Text(v).St(St().Text(12.5, 500, ColTextDim).WrapOn()),
+		).St(St().GapOf(2).PadOnly(0, 0, 6, 0))
+	}
 	return Row(
 		Text(k).St(St().Text(12, 400, ColTextMuted)),
 		Spacer(),
@@ -329,6 +337,19 @@ func Ring(v float32, size float32, color string) *Node {
 // inputCaret 记录每个输入框的光标位置（按 rune）。
 var inputCaret = map[string]int{}
 
+// inputShadow 记录每个输入框当前文本（按 key）。
+//
+// 只用于移动端输入法（IME）同步：组件把文本放在闭包里，帧外无法读取，
+// 所以渲染时留一份影子；输入法上屏后按「影子 → 新文本」的差异注入焦点控件。
+var inputShadow = map[string]string{}
+
+// inputKind 输入框类型：0=单行 1=多行 2=密码（决定弹出的键盘类型）。
+var inputKind = map[string]int{}
+
+// inputLeftPad 输入框内容左侧额外留白（px）：搜索框这类需要在框内左侧画图标的组件用，
+// 文字与光标定位同时右移，避免图标压在文字上。
+var inputLeftPad = map[string]float32{}
+
 // inputSubmit 记录每个输入框的回车提交回调（地址栏等需要「回车即执行」的场景）。
 var inputSubmit = map[string]func(){}
 
@@ -366,22 +387,43 @@ func Input(key, value, placeholder string, onChange func(string)) *Node {
 	return inputNode(key, value, placeholder, false, onChange)
 }
 
+// InputH 指定高度的单行输入框（默认 38；紧凑工具栏 / 筛选栏用）。
+func InputH(key, value, placeholder string, h float32, onChange func(string)) *Node {
+	return inputNodeH(key, value, placeholder, false, h, onChange)
+}
+
 // PasswordInput 密码输入框（掩码显示）。
 func PasswordInput(key, value, placeholder string, onChange func(string)) *Node {
 	return inputNode(key, value, placeholder, true, onChange)
 }
 
 func inputNode(key, value, placeholder string, password bool, onChange func(string)) *Node {
+	return inputNodeH(key, value, placeholder, password, 38, onChange)
+}
+
+// inputNodeH 输入框实现（h 为整体高度，光标高度随之收敛）。
+func inputNodeH(key, value, placeholder string, password bool, h float32, onChange func(string)) *Node {
+	if h <= 0 {
+		h = 38
+	}
+	caretH := h - 22
+	if caretH < 12 {
+		caretH = 12
+	}
+	if caretH > 16 {
+		caretH = 16
+	}
 	focused := IsFocused(key)
-	runes := []rune(value)
-	caret, ok := inputCaret[key]
-	if !ok || caret > len(runes) {
-		caret = len(runes)
+	// 影子文本 / 类型：移动端输入法同步用（见 ui/ime_android.go）
+	inputShadow[key] = value
+	if password {
+		inputKind[key] = 2
+	} else {
+		inputKind[key] = 0
 	}
-	if caret < 0 {
-		caret = 0
-	}
-	inputCaret[key] = caret
+	sel := inputTextSel(key, value)
+	runes, caret := sel.Runes, sel.Caret
+	inputCaret[key], inputAnchor[key] = sel.Caret, sel.Anchor
 
 	// 显示文本：密码掩码
 	display := value
@@ -394,17 +436,29 @@ func inputNode(key, value, placeholder string, password bool, onChange func(stri
 		stroke = ColPrimary
 	}
 
+	// segCells 把 [start,end) 文本按选区切段（密码框用掩码等长替换）
+	segCells := func(start, end int) []*Node {
+		segs := sel.SelLineSegments(start, end)
+		out := make([]*Node, 0, len(segs)+1)
+		for _, sg := range segs {
+			txt := sg.Text
+			if password {
+				txt = strings.Repeat("•", len([]rune(txt)))
+			}
+			st := St().Text(13, 400, ColText)
+			if sg.Sel {
+				st.BgC(paintWithAlpha(ColPrimary, 0.30))
+			}
+			out = append(out, Text(txt).St(st))
+		}
+		return out
+	}
+
 	var content *Node
 	if focused {
 		// 光标闪烁：1.0s 周期，动画节点驱动逐帧重绘
 		showCaret := int(AnimTime()*2)%2 == 0
-		before := string(runes[:caret])
-		after := string(runes[caret:])
-		if password {
-			before = strings.Repeat("•", caret)
-			after = strings.Repeat("•", len(runes)-caret)
-		}
-		cells := []*Node{Text(before).St(St().Text(13, 400, ColText))}
+		cells := segCells(0, caret)
 		// IME 组合串：高亮背景显示，光标不闪烁（输入法正在编辑）
 		if comp := ComposingText(); comp != "" && !password {
 			cp := ComposingCaret()
@@ -417,9 +471,9 @@ func inputNode(key, value, placeholder string, password bool, onChange func(stri
 			showCaret = false
 		}
 		if showCaret {
-			cells = append(cells, Box().St(St().W(1.5).H(16).BgC(ColPrimary).MarXY(0.5, 0)))
+			cells = append(cells, Box().St(St().W(1.5).H(caretH).BgC(ColPrimary).MarXY(0.5, 0)))
 		}
-		cells = append(cells, Text(after).St(St().Text(13, 400, ColText)))
+		cells = append(cells, segCells(caret, len(runes))...)
 		content = Row(cells...).St(St().AnimSlowOn())
 	} else if value == "" {
 		content = Row(Text(placeholder).St(St().Text(13, 400, ColPlaceholder)))
@@ -428,69 +482,170 @@ func inputNode(key, value, placeholder string, password bool, onChange func(stri
 	}
 
 	box := Stack(
-		Row(content).St(St().AbsFill().PadXY(12, 0)).AlignTo(AlignCenter),
-	).St(St().Wp(100).H(38).R(10).BgC(ColInput).Stroke(1, stroke).FocusOn().Clipped())
+		Row(content).St(St().AbsFill().PadOnly(0, 12, 0, 12+inputLeftPad[key])).AlignTo(AlignCenter),
+	).St(St().Wp(100).H(h).R(10).BgC(ColInput).Stroke(1, stroke).FocusOn().Clipped())
 
 	n := box.K(key)
-	n.OnClick = func() { SetFocus(key) }
-	n.OnChar = func(r rune) {
-		switch r {
-		case '\r', '\n', '\t':
-			return
-		case 8, 127: // Backspace / Delete
-			if caret > 0 {
-				runes = append(runes[:caret-1], runes[caret:]...)
-				caret--
-			}
-		default:
-			runes = append(runes, 0)
-			copy(runes[caret+1:], runes[caret:])
-			runes[caret] = r
-			caret++
-		}
-		inputCaret[key] = caret
-		value = string(runes)
+	// commit 把选区状态写回帧间存储并通知业务
+	commit := func() {
+		inputCaret[key] = sel.Caret
+		inputAnchor[key] = sel.Anchor
+		value = sel.Text()
 		if onChange != nil {
 			onChange(value)
 		}
 		RequestRedraw()
 	}
+	// caretAt 把节点内横坐标换算成光标位置（文本起点 padX=12，搜索框额外留白计入）
+	caretAt := func(px, _ float32) int {
+		return sel.IndexAtX(px-12-inputLeftPad[key], 13, 400)
+	}
+	n.OnClick = func() {
+		SetFocus(key)
+		// 刚拖选完的松手：OnClick 总会在 mouseup 后触发一次，不能在这里折叠选区
+		if inputDragged[key] {
+			inputDragged[key] = false
+			return
+		}
+		sel.SetCaret(caretAtMouse(key, caretAt, sel.Caret), false)
+		commit()
+	}
+	// 按下即定位光标并从该点开始拖选（App 只在 OnDrag != nil 时建立拖拽目标）
+	n.OnPress = func() {
+		inputDragged[key] = false
+		// 按下即获焦：拖选过程中就要显示高亮（未聚焦只画纯文本）
+		SetFocus(key)
+		pos := caretAtMouse(key, caretAt, sel.Caret)
+		sel.Anchor, sel.Caret = pos, pos
+		commit()
+	}
+	n.OnDrag = func(x, _ float32) {
+		inputDragged[key] = true
+		sel.Caret = caretAt(x, 0)
+		sel.Clamp()
+		inputCaret[key], inputAnchor[key] = sel.Caret, sel.Anchor
+		RequestRedraw()
+	}
+	n.OnChar = func(r rune) {
+		switch r {
+		case '\r', '\n', '\t':
+			return
+		case 8: // Backspace
+			sel.Backspace()
+		case 127: // Delete
+			sel.DeleteForward()
+		default:
+			sel.Insert(string(r))
+		}
+		commit()
+	}
 	n.OnKey = func(k uint32) {
+		shift := ShiftDown()
+		ctrl := CtrlDown()
 		switch k {
+		case VK_BACK: // Backspace（框架不再把 WM_CHAR 0x08 当文本送入，退格走键位）
+			sel.Backspace()
 		case 0x0D: // Enter：提交（不录入文本，由回调决定动作）
 			if fn := inputSubmit[key]; fn != nil {
 				fn()
 			}
 			return
 		case 0x25: // Left
-			if caret > 0 {
-				caret--
+			if ctrl {
+				sel.SetCaret(wordLeft(sel.Text(), sel.Caret), shift)
+			} else {
+				sel.Move(-1, shift)
 			}
 		case 0x27: // Right
-			if caret < len(runes) {
-				caret++
+			if ctrl {
+				sel.SetCaret(wordRight(sel.Text(), sel.Caret), shift)
+			} else {
+				sel.Move(1, shift)
 			}
 		case 0x24: // Home
-			caret = 0
+			sel.SetCaret(0, shift)
 		case 0x23: // End
-			caret = len(runes)
+			sel.SetCaret(len(sel.Runes), shift)
 		case 0x2E: // Delete
-			if caret < len(runes) {
-				runes = append(runes[:caret], runes[caret+1:]...)
+			sel.DeleteForward()
+		case 0x41, 0x61, 0x43, 0x63, 0x58, 0x78, 0x56, 0x76: // Ctrl+A/C/X/V 兜底
+			if !ctrl {
+				return
+			}
+			switch k {
+			case 0x41, 0x61:
+				sel.SelectAll()
+			case 0x43, 0x63:
+				sel.Copy()
+			case 0x58, 0x78:
+				sel.Cut()
+			case 0x56, 0x76:
+				sel.Paste(false)
 			}
 		default:
 			return
 		}
-		inputCaret[key] = caret
-		value = string(runes)
-		if onChange != nil {
-			onChange(value)
-		}
-		RequestRedraw()
+		commit()
 	}
+	// Ctrl+A/C/X/V：App 在焦点控件上优先分发（否则会被全局「复制选区」先吞掉）
+	RegisterTextEdit(key, func(act TextEditAction) bool {
+		switch act {
+		case TextEditSelectAll:
+			sel.SelectAll()
+		case TextEditCopy:
+			if sel.Selected() != "" {
+				return sel.Copy()
+			}
+			// 没有选区时复制整段文本（搜索框 / 地址栏的常见习惯）
+			if sel.Text() == "" {
+				return false
+			}
+			return ClipboardSetText(sel.Text())
+		case TextEditCut:
+			if !sel.Cut() {
+				return false
+			}
+		case TextEditPaste:
+			if !sel.Paste(false) {
+				return false
+			}
+		}
+		commit()
+		return true
+	})
 	inputKeyHandlers[key] = n.OnKey
 	inputCharHandlers[key] = n.OnChar
 	return n
+}
+
+// inputAnchor 每个输入框的选区锚点（与 inputCaret 配对；两者相等表示无选区）。
+var inputAnchor = map[string]int{}
+
+// inputDragged 标记输入框刚发生拖选：松手后的 OnClick 要跳过，否则选区被折叠。
+var inputDragged = map[string]bool{}
+
+// inputTextSel 用输入框当前文本 + 光标 / 锚点构造选区状态。
+func inputTextSel(key, value string) *TextSel {
+	rs := []rune(value)
+	caret, ok := inputCaret[key]
+	if !ok || caret > len(rs) || caret < 0 {
+		caret = len(rs)
+	}
+	anchor, ok := inputAnchor[key]
+	if !ok || anchor > len(rs) || anchor < 0 {
+		anchor = caret
+	}
+	return NewTextSel(value, caret, anchor)
+}
+
+// caretAtMouse 按鼠标位置换算光标（点击定位 / 拖选共用）。
+// at 接收「相对节点左上角」的横坐标（多行输入还要纵坐标），换算失败时返回 fallback。
+func caretAtMouse(key string, at func(float32, float32) int, fallback int) int {
+	x, y := MousePos()
+	if r, ok := LastFrameOf(key); ok {
+		return at(x-r.X, y-r.Y)
+	}
+	return fallback
 }
 
 // ---- 加载与反馈 ----
@@ -543,7 +698,7 @@ func Toast(msg string) *Node {
 	return Row(
 		Box().St(St().W(6).H(6).R(3).BgC(ColSuccess)),
 		Text(msg).St(St().Text(12.5, 500, ColText)),
-	).St(St().AbsBottom(24).PadXY(14, 10).R(10).GapOf(8).
+	).St(St().AbsBottom(toastBottom).PadXY(14, 10).R(10).GapOf(8).
 		BgC(ColPanel).Stroke(1, ColStroke).Shadow(24, 8, 0, "rgba(0,0,0,0.5)"))
 }
 

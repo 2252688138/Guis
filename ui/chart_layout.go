@@ -1,15 +1,15 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
 	"math"
 
-	"gogui/internal/geom"
-	"gogui/internal/gpu"
+	"guis/internal/geom"
+	"guis/internal/gpu"
 )
 
 // 图表绘制：几何计算 + 原生图元（网格/柱/文字/悬浮提示）+ 一张缓存的矢量纹理。

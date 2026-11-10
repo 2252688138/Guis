@@ -1,9 +1,9 @@
 //go:build windows || ((linux || freebsd) && !android)
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"gogui/internal/audio"
+	"guis/internal/audio"
 )
 
-// 音乐播放：GoGUI 不做编解码，用外部 ffmpeg 子进程把音频解成 s16le PCM，
+// 音乐播放：GUIS 不做编解码，用外部 ffmpeg 子进程把音频解成 s16le PCM，
 // 一路写入 waveOut 播放（设备样本数即播放位置），一路送进环形缓冲做 FFT。
 // 与视频播放器的区别：没有画面，位置来自音频设备而非帧率，额外提供实时频谱。
 //

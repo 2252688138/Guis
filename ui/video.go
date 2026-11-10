@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-// 视频播放：GoGUI 不做编解码，只负责「帧 → 纹理 → 画面 + 播放控制」。
+// 视频播放：GUIS 不做编解码，只负责「帧 → 纹理 → 画面 + 播放控制」。
 // 帧来源有两类：
 //  1. VideoClip：内存中的帧序列（GIF、图片序列、解码器逐帧结果）；
 //  2. VideoSource：外部解码器按播放位置取帧（FFmpeg / MediaFoundation 等）。
@@ -754,7 +754,16 @@ func (p *Player) FrameIndex() int {
 }
 
 // advance 按真实时间推进播放位置并解析当前帧（VideoPlayer 每帧调用）。
-func (p *Player) advance(now float32) {
+// 播放中会点亮全局续帧标记（animBusy），即“画面在动就必须继续出帧”。
+func (p *Player) advance(now float32) { p.advanceTick(now, true) }
+
+// advanceQuiet 与 advance 相同，但不点亮全局续帧。
+//
+// VideoSurfaceTick 这类“调用方自己控帧”的纯画面节点用它：由调用方按片段帧间隔
+// 请求重绘，避免整窗重绘被拉到 60–120fps（桌宠曾因此常驻 ~90fps、约 14% CPU）。
+func (p *Player) advanceQuiet(now float32) { p.advanceTick(now, false) }
+
+func (p *Player) advanceTick(now float32, mark bool) {
 	if p == nil {
 		return
 	}
@@ -797,7 +806,7 @@ func (p *Player) advance(now float32) {
 				}
 			}
 		}
-		if p.Playing {
+		if p.Playing && mark {
 			markAnim()
 		}
 	}

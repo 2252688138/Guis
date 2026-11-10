@@ -1,9 +1,9 @@
 //go:build windows || ((linux || freebsd) && !android)
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
-	"gogui/internal/audio"
+	"guis/internal/audio"
 )
 
-// 媒体解码：GoGUI 自身不做编解码，而是调用外部 ffmpeg 子进程把任意容器解成
+// 媒体解码：GUIS 自身不做编解码，而是调用外部 ffmpeg 子进程把任意容器解成
 // RGBA 原始帧（画面）与 s16le PCM（声音），再把帧包装成 VideoSource。
 // 支持 mp4 / mkv / mov / avi / webm / flv / ts / m3u8（远端链接亦可）。
 //
@@ -105,12 +105,12 @@ type MediaConfig struct {
 	HWAccel bool
 }
 
-// DecoderPreference 解码器偏好（环境变量 GOGUI_DECODER）：
+// DecoderPreference 解码器偏好（环境变量 GUIS_DECODER）：
 //   - "system" / "mf"：强制用系统解码器（没装 ffmpeg 时的回退路径，也方便验证）
 //   - "ffmpeg"：强制用 ffmpeg（不可用时直接报错，不回退）
 //   - 其它 / 未设置：auto（ffmpeg 优先，缺失时自动回退系统解码器）
 func DecoderPreference() string {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("GOGUI_DECODER"))) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("GUIS_DECODER"))) {
 	case "system", "mf", "mediafoundation":
 		return "system"
 	case "ffmpeg":
@@ -395,10 +395,12 @@ type MediaSource struct {
 	previewBusy  bool
 	previewWant  time.Duration
 	previewHas   bool
-	lastOpen     time.Time
-	closed       bool
-	eof          bool
-	err          error
+	// clockDone 音频流已播完：此时设备时钟不再前进，播放位置改由上层按墙钟推进
+	clockDone bool
+	lastOpen  time.Time
+	closed    bool
+	eof       bool
+	err       error
 
 	// 系统解码器后端（没装 ffmpeg 时使用；为 nil 表示 ffmpeg 路径）
 	sys sysSource
@@ -1024,6 +1026,7 @@ func (s *MediaSource) openWindow(pos time.Duration) {
 	s.frames = nil
 	s.eof = false
 	s.err = nil
+	s.clockDone = false
 	s.clearPreview()
 	oldV, oldA := s.vcmd, s.acmd
 	s.vcmd, s.acmd = nil, nil
@@ -1244,6 +1247,10 @@ func (s *MediaSource) runAudio(agen int, start time.Duration) {
 	if s.acmd == cmd {
 		s.acmd = nil
 	}
+	// 音频流读完：设备时钟即将停住，通知上层改按墙钟推进播放位置
+	if agen == s.agen && !s.closed {
+		s.clockDone = true
+	}
 	s.mu.Unlock()
 }
 
@@ -1326,20 +1333,33 @@ func (s *MediaSource) fail(gen int, err error) {
 }
 
 // MediaClock 播放时钟：有声音时以音频设备已播样本为准（A/V 同步），否则无效。
+// 音频流播完后设备位置不再前进，这里必须返回 false，让上层改按墙钟推进，
+// 否则播放位置会永久停在声音结束处（片头/视频画面定格）。
 func (s *MediaSource) MediaClock() (time.Duration, bool) {
 	if s == nil {
 		return 0, false
 	}
 	s.mu.Lock()
 	dev, start, on, paused, closed := s.audio, s.start, s.audioDevOn, s.paused, s.closed
+	done := s.clockDone
 	s.mu.Unlock()
-	if !on || dev == nil || paused || closed {
+	if !on || dev == nil || paused || closed || done {
 		return 0, false
 	}
 	if d, ok := dev.Position(); ok {
 		return start + d, true
 	}
 	return 0, false
+}
+
+// markClockDone 音频流已播完（或音频输出结束）：停止使用设备时钟。
+func (s *MediaSource) markClockDone() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.clockDone = true
+	s.mu.Unlock()
 }
 
 // MediaScrub 拖动进度状态：拖动中不动解码（画面走单帧预览、声音暂停），

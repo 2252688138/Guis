@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
@@ -100,7 +100,9 @@ var (
 	TrackMouseEvent               func(tme *TRACKMOUSEEVENT) int32
 	// 自绘标题栏：SendMessage(WM_NCLBUTTONDOWN, HTCAPTION) 交给系统拖动窗口
 	SendMessageW func(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr
-	IsZoomed     func(hwnd uintptr) int32
+	// 环境变量变更广播（WM_SETTINGCHANGE / SMTO_ABORTIFHUNG）
+	SendMessageTimeoutW func(hwnd uintptr, msg uint32, wp, lp uintptr, flags, timeout uint32, result *uintptr) uintptr
+	IsZoomed            func(hwnd uintptr) int32
 
 	// 多窗口 / 托盘 / 菜单 / 光标
 	SetForegroundWindow    func(hwnd uintptr) int32
@@ -382,10 +384,16 @@ func init() {
 	bind(libUser32, &UnregisterHotKey, "UnregisterHotKey")
 	// 阻止休眠 / 屏幕常亮（system.go）
 	bind(libKernel32, &SetThreadExecutionState, "SetThreadExecutionState")
-	// 系统深浅色检测（system.go）
+	// 系统深浅色检测 / 持久化环境变量（system.go / env.go）
 	bind(libAdvapi32, &RegOpenKeyExW, "RegOpenKeyExW")
 	bind(libAdvapi32, &RegQueryValueExW, "RegQueryValueExW")
+	bind(libAdvapi32, &RegSetValueExW, "RegSetValueExW")
+	bind(libAdvapi32, &RegDeleteValueW, "RegDeleteValueW")
 	bind(libAdvapi32, &RegCloseKey, "RegCloseKey")
+	// 开机自启写入 HKCU\...\Run（autostart.go）
+	bind(libAdvapi32, &RegCreateKeyExW, "RegCreateKeyExW")
+	// 环境变量变更广播（env.go）
+	bind(libUser32, &SendMessageTimeoutW, "SendMessageTimeoutW")
 
 	bind(libOle32, &CoTaskMemFree, "CoTaskMemFree")
 

@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -16,9 +16,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gogui/internal/geom"
-	"gogui/internal/gpu"
-	"gogui/internal/text"
+	"guis/internal/geom"
+	"guis/internal/gpu"
+	"guis/internal/text"
 )
 
 // Options 启动参数。
@@ -41,6 +41,9 @@ type Options struct {
 	// Icon 窗口/任务栏图标（.ico 字节）；为空时用内置默认图标。
 	// 需要 exe 文件图标时，用 rsrc 类工具把同一 .ico 嵌入可执行文件。
 	Icon []byte
+	// Locale 启动语言（BCP-47，如 "en-US" / "zh-CN"）。
+	// 留空 = 自动：偏好 ui.locale > 系统语言 > en-US（见 ui.AutoLocale）。
+	Locale string
 }
 
 // App 一个窗口的应用实例（UI 线程独占）。
@@ -55,6 +58,8 @@ type App struct {
 	dirty   bool
 	running bool
 	closed  bool
+	// revealed 首帧已呈现、窗口已显示（启动时先隐藏窗口，避免白屏/闪一下）
+	revealed bool
 
 	mouseX, mouseY float32
 	mouseIn        bool
@@ -64,6 +69,10 @@ type App struct {
 	clickPending   bool
 	clickX, clickY float32
 
+	// 右键按下：下一帧（树指针有效时）分发给 OnRightClickAt。
+	rightPending   bool
+	rightX, rightY float32
+
 	// redrawRequest 允许业务回调在任意线程请求重绘
 	redrawRequest atomic.Bool
 	// hoverProbe 仅指针位置变化（未确定是否需要重绘外观）时置位
@@ -71,9 +80,13 @@ type App struct {
 
 	hoverNode *Node
 	pressNode *Node
-	// pressFired 记录本次按下已分发过 OnPress 的节点（每次松开重置）
-	pressFired *Node
-	scrolls    map[string]float32
+	// pressSent 本次按下是否已分发过 OnPress。
+	//
+	// 不能用「节点指针」判断：节点树每帧重建，指针帧帧不同，会导致
+	// OnPress 在按住期间每帧重放（拖选的锚点被不断改写成鼠标当前位置，
+	// 选区永远拉不出来）。
+	pressSent bool
+	scrolls   map[string]float32
 
 	bg gpu.Paint
 
@@ -96,7 +109,7 @@ type App struct {
 	slowOnlyFrame bool
 	// animDirty 动画续帧标记（可被装饰动画节流；dirty 则必须立即绘制）。
 	animDirty bool
-	// dbgAnim 本帧参与持续重绘的动画节点（GOGUI_FPS=1 时输出，定位 CPU 用）。
+	// dbgAnim 本帧参与持续重绘的动画节点（GUIS_FPS=1 时输出，定位 CPU 用）。
 	dbgAnim []string
 	// dbgBusy 上一帧结束时 animBusy 的取值（诊断用）。
 	dbgBusy bool
@@ -107,10 +120,15 @@ type App struct {
 	textures *imageTextures
 	// 子菜单指示三角纹理（懒创建，随窗口销毁）
 	arrowTex *gpu.Texture
+	// 图标纹理缓存（Iconfont 路径光栅化结果，按 名称/像素尺寸/线宽 缓存，随窗口销毁）
+	icons map[iconTexKey]*gpu.Texture
 	// 图表矢量层纹理（每张图表一张，总预算 chartTexBudget，按 LRU 淘汰）
 	chartList  []*chartCache
 	chartBytes int64
 	chartStamp int64
+	// chartFrameBase 上一帧开始时的 chartStamp：
+	// stamp 小于它的图表纹理说明上一帧没画到（空闲回收时可直接释放）。
+	chartFrameBase int64
 	// 视频帧纹理缓存（每个播放器一份，随窗口销毁；按帧序号做 LRU 回收）
 	videos   map[*Player]*videoTexture
 	videoSeq int
@@ -146,6 +164,10 @@ type App struct {
 	scrollDragMax   float32
 	// scrollIdle 距上次滚动/悬停的秒数（滚动条淡出用）
 	scrollIdle float32
+	// 惯性滑动（移动端手指甩出后继续滑）：flingKey 为正在滑动的滚动容器 Key，
+	// flingVel 为速度（逻辑像素/秒，正 = 内容继续向上、偏移增大）。
+	flingKey string
+	flingVel float32
 	// 上一帧时间戳与帧间隔（滚动缓动/淡出推进）
 	lastFrame time.Time
 	animDt    float32
@@ -162,9 +184,28 @@ type App struct {
 	clipN     int
 	clipSkip  int
 
+	// 组件栅格缓存：结构路径键 → 一张屏幕快照纹理（见 ui/layers.go）
+	layers       map[uint64]*layerEntry
+	layerPending []layerShot
+	layerStamp   int64
+	// cacheLayers 本帧是否开启「能缓则缓」（帧开头从全局开关同步）
+	cacheLayers bool
+	// layerOpen 本帧已在一层栅格缓存子树内：嵌套层不再重复抓取
+	layerOpen bool
+	// layerRoots 本帧被标记为缓存根的节点数（诊断用）
+	layerRoots int
+	// layerRej 本帧成为候选但被绘制期条件拒绝的次数（诊断用）
+	layerRej int
+	// 本帧窗口逻辑尺寸（栅格缓存可用性判断用）
+	winW, winH float32
+	// 组件缓存命中 / 未命中次数（诊断用：确认缓存真的生效）
+	layerHit, layerMiss int
+
 	// 窗口关闭回调（返回 false 可阻止关闭，例如收进托盘）
 	onClose func() bool
-	pending []func()
+	// quitting 跳过关闭拦截（App.Quit 真正退出时置位）
+	quitting bool
+	pending  []func()
 	// disposed 保证 GL/字体资源只释放一次
 	disposed bool
 	// minimized 上一帧是否处于最小化（恢复时强制重绘，并重建媒体解码窗口）
@@ -187,6 +228,10 @@ type App struct {
 // Web 端会在建窗口前 fetch 字体并注册，桌面端什么都不做。
 // 因此业务代码在所有平台只需要写一个 main()、一份 Options。
 func Run(opts Options, view func() *Node) error {
+	// 热重载：go run 启动时本进程先当守护进程（监听源码 + 重启子进程），不建窗口。
+	if handled, err := hotReloadEnterRun(); handled {
+		return err
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -202,6 +247,7 @@ func Run(opts Options, view func() *Node) error {
 		}
 	}()
 	prepareRun(&opts)
+	initStartupLocale(opts.Locale)
 
 	a, err := newApp(opts, view)
 	if err != nil {
@@ -209,7 +255,7 @@ func Run(opts Options, view func() *Node) error {
 	}
 	_ = a
 	err = runLoop()
-	if os.Getenv("GOGUI_X11_DEBUG") != "" {
+	if os.Getenv("GUIS_X11_DEBUG") != "" {
 		fmt.Fprintf(os.Stderr, "[ui] runLoop 返回 err=%v\n", err)
 	}
 	return err
@@ -222,7 +268,7 @@ func OpenWindow(opts Options, view func() *Node) (*App, error) {
 
 func normalizeOpts(opts Options) Options {
 	if opts.Title == "" {
-		opts.Title = "GoGUI"
+		opts.Title = "GUIS"
 	}
 	if opts.Width <= 0 {
 		opts.Width = 1024
@@ -248,6 +294,11 @@ func newApp(opts Options, view func() *Node) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 绑定 GL 上下文再建渲染资源：Android 的 EGL 上下文由原生窗口线程创建
+	// （见 internal/android 的 ggGoWindowCreated），Go 侧 UI 线程默认没有 current
+	// context，此时 glCreateShader 全部失败、InfoLog 还是空的（表现为启动即
+	// "shape shader: compile failed: (no log)"）。桌面端这句是幂等的。
+	win.MakeCurrent()
 
 	a := &App{
 		win:           win,
@@ -270,13 +321,21 @@ func newApp(opts Options, view func() *Node) (*App, error) {
 		return nil, err
 	}
 	a.r = r
+	// 可选：给 Go 堆一个软上限（默认不设，见 ui/memstats.go 的 heapLimitMB）。
+	applyHeapLimit()
 
 	pw, ph, scale, ss := a.renderSize()
 	r.SetSuperSample(ss)
 	r.Resize(pw, ph, scale)
+	// 首帧的 view() 在 Layout 之前构建：先用窗口逻辑尺寸初始化视口，
+	// 否则 ui.ViewportW()（侧栏宽度 / 窄屏断点）会拿到默认 1180，
+	// 手机上第一帧会按桌面宽屏布局画出来再跳变。
+	if scale > 0 {
+		SetViewport(float32(pw)/scale, float32(ph)/scale)
+	}
 
 	// B 阶段（可选）：把呈现切到 DirectComposition，网页与自绘内容同层合成。
-	// 环境变量 GOGUI_COMPOSE=0 可强制回退 A 阶段（子窗口叠加）。
+	// 环境变量 GUIS_COMPOSE=0 可强制回退 A 阶段（子窗口叠加）。
 	win.AttachCompose(pw, ph)
 	a.fonts = newFontCache(opts.FontFamily, scale)
 	// 字体被 LRU 回收时同步释放图集纹理，否则显存只增不减
@@ -284,6 +343,9 @@ func newApp(opts Options, view func() *Node) (*App, error) {
 
 	win.SetEventHandler(a.handleEvent)
 	registerApp(a)
+	// 热重载重启：恢复上一进程的窗口位置 / 尺寸 / 最大化与业务状态。
+	// 必须在首帧之前完成，否则窗口会先按默认位置闪一下。
+	hotApplyRestore(a)
 	if opts.Hidden {
 		win.SetVisible(false)
 	}
@@ -291,16 +353,16 @@ func newApp(opts Options, view func() *Node) (*App, error) {
 }
 
 // runLoop 统一消息泵与多窗口渲染循环。
-// fpsDebug：GOGUI_FPS=1 时每秒输出真实帧率与重绘原因，用于定位常驻重绘源。
-var fpsDebug = os.Getenv("GOGUI_FPS") != ""
+// fpsDebug：GUIS_FPS=1 时每秒输出真实帧率与重绘原因，用于定位常驻重绘源。
+var fpsDebug = os.Getenv("GUIS_FPS") != ""
 
 // dbgRedrawFrom 最近一次 RequestRedraw 的调用栈（诊断用）。
 var dbgRedrawFrom atomic.Value
 
-// fpsOut 诊断输出：不指定 GOGUI_FPS_FILE 时用 stderr；
+// fpsOut 诊断输出：不指定 GUIS_FPS_FILE 时用 stderr；
 // 指定后追加到文件（GUI 子进程重定向 stderr 时不会卡住调用方）。
 func fpsOut(s string) {
-	if p := os.Getenv("GOGUI_FPS_FILE"); p != "" {
+	if p := os.Getenv("GUIS_FPS_FILE"); p != "" {
 		if f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
 			_, _ = f.WriteString(s)
 			_ = f.Close()
@@ -318,7 +380,7 @@ func runLoop() error {
 	// 复用窗口列表切片：旧实现每轮循环（即使完全空闲，约 8ms 一次）都用 snapshotApps()
 	// 复制一份，持续产生垃圾；这里改成原地复用，容量不足时才扩容。
 	list := make([]*App, 0, 4)
-	// GOGUI_FPS=1 时每秒打印帧率/重绘原因（见 fpsDebug）；这里只维护计数器。
+	// GUIS_FPS=1 时每秒打印帧率/重绘原因（见 fpsDebug）；这里只维护计数器。
 	dbgLast := time.Now()
 	dbgPainted, dbgSkipped := 0, 0
 	var dbgApp *App
@@ -330,6 +392,15 @@ func runLoop() error {
 		list = appsInto(list[:0])
 		if len(list) == 0 {
 			break
+		}
+		// 热重载：守护进程要求「保存现场并退出」时，在消息循环里干净地关窗退出。
+		// 不能从后台 goroutine 直接 Dispose：GL 与窗口资源必须在 UI 线程释放。
+		if hotStopRequested() {
+			for _, a := range list {
+				a.quitting = true
+				a.win.Close()
+			}
+			continue
 		}
 		// 上一帧存在动画时本帧继续重绘所有窗口
 		needAnim := animBusy.Swap(false)
@@ -365,8 +436,9 @@ func runLoop() error {
 				a.dirty = true
 				ResumeMediaAll()
 			}
-			// 窗口最小化时跳过渲染（不可见的帧不消耗 GPU/CPU）
-			if a.win != nil && a.win.IsMinimized() {
+			// 窗口最小化、或被收进托盘（隐藏）时跳过渲染：不可见的帧不消耗 GPU/CPU。
+			// 首帧呈现前（revealed 为假）不能跳过，否则 Options.Hidden 的窗口永远等不到首帧。
+			if a.win != nil && (a.win.IsMinimized() || (a.revealed && a.windowHidden())) {
 				a.minimized = true
 				a.dirty = false
 				a.redrawRequest.Store(false)
@@ -394,6 +466,7 @@ func runLoop() error {
 			if fpsDebug {
 				dbgGate = fmt.Sprintf("dirty=%v anim=%v need=%v probe=%v req=%v", a.dirty, a.animDirty, needAnim, a.hoverProbe, reqRedraw)
 			}
+			setGateDiag(fmt.Sprintf("d=%v a=%v n=%v p=%v r=%v", a.dirty, a.animDirty, needAnim, a.hoverProbe, reqRedraw))
 			if due && (a.dirty || a.animDirty || reqRedraw || needAnim || a.hoverProbe) {
 				forced := a.dirty || needAnim || a.hoverProbe
 				a.dirty = false
@@ -407,7 +480,9 @@ func runLoop() error {
 			}
 			// 空闲回收（两级）：
 			//   1) 3 秒无绘制：释放可重建的显存（超采样离屏目标 / 毛玻璃中间层 /
-			//      图表与图片纹理）+ 一次 Go 堆回收。这些资源下一帧自动重建，观感不变。
+			//      组件快照 / 上一帧没画到的图片与图表纹理）+ 一次 Go 堆回收。
+			//      注意可见的图片 / 图表纹理不能在这里动：它们的重建要走异步解码，
+			//      纹理回来之前那块区域是空的，用户一动鼠标就会整窗闪一下。
 			//   2) 30 秒无绘制且窗口不在前台（或被最小化）：再把驻留的物理页交给系统。
 			//      用户正看着窗口时不做，避免重新调页的顿挫。
 			idle := time.Since(a.lastPaint)
@@ -427,7 +502,7 @@ func runLoop() error {
 		if !painted && !needAnim {
 			want = time.Second / 60
 		}
-		// GOGUI_FPS=1：每秒输出一次真实帧率与“为什么在重绘”，新增常驻重绘源时直接定位。
+		// GUIS_FPS=1：每秒输出一次真实帧率与“为什么在重绘”，新增常驻重绘源时直接定位。
 		if fpsDebug && time.Since(dbgLast) >= time.Second {
 			var anim []string
 			var slowFrame, fastFlag bool
@@ -435,6 +510,8 @@ func runLoop() error {
 			var dbgScrollAnim, dbgPressed, dbgClickPend, dbgBusyFlag bool
 			var dbgDrag string
 			var dbgFonts, dbgAtlasKB int
+			var dbgLayerHit, dbgLayerMiss, dbgLayerRoots, dbgLayerRej int
+			var dbgCacheOn bool
 			if dbgApp != nil {
 				if dbgApp.fonts != nil {
 					dbgFonts = len(dbgApp.fonts.fonts)
@@ -446,12 +523,19 @@ func runLoop() error {
 				dbgView, dbgLay, dbgPaint = dbgApp.dbgViewMs, dbgApp.dbgLayMs, dbgApp.dbgPaintMs
 				dbgScrollAnim, dbgPressed, dbgClickPend = dbgApp.isScrollAnimating(), dbgApp.pressed, dbgApp.clickPending
 				dbgDrag = dbgApp.dragKey + "|" + dbgApp.scrollDragKey
+				dbgLayerHit, dbgLayerMiss = dbgApp.layerHit, dbgApp.layerMiss
+				dbgApp.layerHit, dbgApp.layerMiss = 0, 0
+				dbgLayerRoots = dbgApp.layerRoots
+				dbgLayerRej = dbgApp.layerRej
+				dbgApp.layerRej = 0
+				dbgCacheOn = dbgApp.cacheLayers
 			}
-			fpsOut(fmt.Sprintf("[gogui] fps=%.0f painted=%d skipped=%d slowOnly=%v animFast=%v busy=%v view=%.1fms layout=%.1fms paint=%.1fms fonts=%d/%dKB scrollAnim=%v pressed=%v drag=%q clickPend=%v tweens=%v anim=%v\n",
+			fpsOut(fmt.Sprintf("[guis] fps=%.0f painted=%d skipped=%d slowOnly=%v animFast=%v busy=%v view=%.1fms layout=%.1fms paint=%.1fms fonts=%d/%dKB layer=%d/%d rej=%d roots=%d cache=%v scrollAnim=%v pressed=%v drag=%q clickPend=%v tweens=%v anim=%v\n",
 				float64(dbgPainted)/time.Since(dbgLast).Seconds(), dbgPainted, dbgSkipped,
 				slowFrame, fastFlag, dbgBusyFlag, dbgView, dbgLay, dbgPaint, dbgFonts, dbgAtlasKB,
+				dbgLayerHit, dbgLayerMiss, dbgLayerRej, dbgLayerRoots, dbgCacheOn,
 				dbgScrollAnim, dbgPressed, dbgDrag, dbgClickPend, activeTweenKeys(), anim))
-			fpsOut(fmt.Sprintf("[gogui] gate %s from=%v\n", dbgGate, dbgRedrawFrom.Load()))
+			fpsOut(fmt.Sprintf("[guis] gate %s from=%v\n", dbgGate, dbgRedrawFrom.Load()))
 			dbgPainted, dbgSkipped, dbgLast = 0, 0, time.Now()
 		}
 		el := time.Since(last)
@@ -474,7 +558,12 @@ func (a *App) handleEvent(ev Event) {
 	currentApp.Store(a)
 	switch ev.Type {
 	case EvClose:
-		if a.onClose != nil && !a.onClose() {
+		if !a.quitting && a.onClose != nil && !a.onClose() {
+			// 拦截本次关闭：Windows 端让后端放弃 WM_CLOSE（窗口只隐藏、不销毁），
+			// 其他平台后端没有该能力时窗口保持原样，进程继续驻留托盘。
+			if b, ok := a.win.(interface{ BlockClose() }); ok {
+				b.BlockClose()
+			}
 			return
 		}
 		a.running = false
@@ -492,33 +581,68 @@ func (a *App) handleEvent(ev Event) {
 	case EvSizeMoveEnd:
 		a.sizeMoving = false
 		a.dirty = true
+	case EvFocusLost:
+		// 窗口失焦（Alt+Tab / 切到其它程序）时修饰键的 KeyUp 可能永远收不到，
+		// 残留的 altDown 会把之后的普通点击当成「Alt+点击」加出额外光标（双光标），
+		// 残留的 shiftDown 又会把单击变成「Shift+点击」选出一大段。
+		a.altDown, a.ctrlDown, a.shiftDown = false, false, false
+		a.pressed, a.pressSent = false, false
+		a.dirty = true
 	case EvMouseMove:
 		a.mouseX, a.mouseY = ev.X/uiScale, ev.Y/uiScale
 		a.mouseIn = true
-		// 不直接全帧重绘：先在下一帧算 hover 命中，
-		// 只有悬停目标/滚动条悬停真的变化时才重新绘制。
-		a.hoverProbe = true
+		// 先用「上一帧的树」判一次命中：鼠标划过空白区域或同一张卡片时，
+		// 悬停目标没有变化，外观也不会变——此时绝不能重绘。
+		//
+		// 为什么重要：浏览器端每次 mousemove 都触发一次「清屏 + 整页重画」，
+		// 鼠标快速移动时可达数百帧/秒，而画面内容其实一模一样；合成器很容易
+		// 抓到「已清屏、尚未画完」的中间帧，视觉上就是鼠标一动界面就闪。
+		need := true
+		if a.root != nil {
+			target := hitInteractive(a.root, a.mouseX, a.mouseY, 0, a)
+			if target == a.hoverNode {
+				// 目标没变：只有需要逐帧更新悬停坐标的控件（自绘悬停提示等）才重绘
+				need = target != nil && target.OnHoverAt != nil
+			}
+		}
+		if need {
+			a.hoverProbe = true
+		}
 	case EvMouseLeave:
 		a.mouseIn = false
 		a.dirty = true
 	case EvMouseDown:
 		a.mouseX, a.mouseY = ev.X/uiScale, ev.Y/uiScale
+		// 手指/鼠标重新按下：惯性滑行应当立即停住（否则内容会从指针底下滑走）
+		a.stopFling()
+		// 右键（Button == 1）：只登记右键菜单，不进左键的按下 / 拖选状态，
+		// 也不触发 OnPress / OnClick（编辑器的右键菜单靠这条链路）。
+		if ev.Button == 1 {
+			a.rightPending = true
+			a.rightX, a.rightY = a.mouseX, a.mouseY
+			a.dirty = true
+			return
+		}
 		a.pressX, a.pressY = a.mouseX, a.mouseY
 		a.pressed = true
 		a.dirty = true
 	case EvMouseUp:
 		a.mouseX, a.mouseY = ev.X/uiScale, ev.Y/uiScale
-		if a.pressed && a.scrollDragKey == "" {
+		// Cancel：本条是「触摸滑动后松手」，只结束按下状态，不进点击链路
+		// （否则手机上滑一下页面，松手位置的卡片就被点开了）。
+		if a.pressed && a.scrollDragKey == "" && !ev.Cancel {
 			// 命中与回调节奏放在下一帧，基于最新的组件树
 			a.clickPending = true
 			a.clickX, a.clickY = a.mouseX, a.mouseY
 		}
 		a.pressed = false
 		a.scrollDragKey = ""
-		a.pressFired = nil
+		a.pressSent = false
 		a.dirty = true
 	case EvMouseWheel:
-		a.handleWheel(ev.X/uiScale, ev.Y/uiScale, ev.DY)
+		// Pointer==1 表示这条滚轮事件是触摸拖动合成的：直接定位（1:1 跟手），
+		// 不再走缓动，否则手机滑动手感明显发黏。
+		a.handleWheelAt(ev.X/uiScale, ev.Y/uiScale, ev.DY, ev.Pointer == 1)
 		a.scrollIdle = 0
 		a.dirty = true
 	case EvKeyDown:
@@ -531,12 +655,26 @@ func (a *App) handleEvent(ev Event) {
 		if ev.Key == VK_MENU {
 			a.altDown = true
 		}
+		// 焦点控件的按键拦截器（代码编辑器用：Tab 缩进、Alt+↑↓ 移动行等
+		// 需要在 Tab 焦点切换 / 文本编辑分发之前拿到原始按键）。
+		if a.focusKey != "" {
+			if h := focusKeyHandlers[a.focusKey]; h != nil && h(ev.Key) {
+				a.dirty = true
+				return
+			}
+		}
 		// Ctrl+K 命令面板（输入焦点在编辑类控件时也生效，与 VS Code 一致）
 		if a.ctrlDown && !a.altDown && (ev.Key == 'K' || ev.Key == 'k') {
 			if ToggleCommandPalette() {
 				a.dirty = true
 				return
 			}
+		}
+		// 文本编辑快捷键（Ctrl+A/C/X/V）：焦点在输入框时优先给控件，
+		// 否则会被全局「复制选区」快捷键先吞掉（输入框里复制粘贴没反应的原因）。
+		if a.ctrlDown && !a.altDown && DispatchTextEdit(ev.Key) {
+			a.dirty = true
+			return
 		}
 		// 应用内快捷键（带修饰键或功能键）：优先于焦点控件，Ctrl+S 这类不会先被输入框吞掉
 		if (a.ctrlDown || a.altDown || ev.Key >= 0x70 && ev.Key <= 0x7B) && DispatchShortcuts(ev.Key) {
@@ -573,7 +711,7 @@ func (a *App) handleEvent(ev Event) {
 			a.dirty = true
 			return
 		}
-		if ev.Key == VK_ESCAPE && a.focusKey == "" {
+		if ev.Key == VK_ESCAPE && a.focusKey == "" && !escQuitDisabled.Load() {
 			a.running = false
 		}
 		if n := a.focusedNode(); n != nil && n.OnKey != nil {
@@ -602,6 +740,15 @@ func (a *App) handleEvent(ev Event) {
 		}
 	case EvChar:
 		a.imeText, a.imeCaret = "", 0
+		// 控制字符一律不进文本编辑链路：
+		//   - Backspace / Enter / Tab 的 WM_KEYDOWN 已经由控件自己处理，
+		//     TranslateMessage 却还会再生成 0x08 / 0x0D / 0x09 的 WM_CHAR，
+		//     放进去就会往文档里插一个不可见字符——渲染成缺字形方块，
+		//     光标位置也跟着错乱，看起来像「左箭头 / Delete 失灵、内容乱跳」；
+		//   - Ctrl+字母 会生成 0x01~0x1A（Ctrl+C -> 0x03）。
+		if !isTextRune(ev.Char) {
+			return
+		}
 		if n := a.focusedNode(); n != nil && n.OnChar != nil {
 			n.OnChar(ev.Char)
 			a.dirty = true
@@ -648,6 +795,13 @@ func (a *App) runPending() {
 	}
 }
 
+// isTextRune 判断一个字符是否属于「可编辑文本」。
+//
+// 控制字符（< 0x20 与 0x7f）一律不是文本：Backspace / Enter / Tab 的键位已经由
+// EvKeyDown 送到控件，TranslateMessage 额外生成的 0x08 / 0x0D / 0x09 只会被当成字
+// 符插进文档（渲染成缺字形方块，光标跟着错位）；Ctrl+字母则是 0x01~0x1A。
+func isTextRune(r rune) bool { return r >= 0x20 && r != 0x7f }
+
 func (a *App) frame(forced bool) {
 	if a.closed {
 		return
@@ -663,6 +817,7 @@ func (a *App) frame(forced bool) {
 	a.r.SetSuperSample(ss)
 	a.r.Resize(pw, ph, es)
 	w, h := float32(pw)/es, float32(ph)/es
+	a.winW, a.winH = w, h
 
 	// composeFBO 在真正开始绘制前才赋值（见下），提前声明以便「无树」分支安全返回
 	var composeFBO uint32
@@ -678,6 +833,9 @@ func (a *App) frame(forced bool) {
 	}
 	Layout(root, w, h, a.fonts)
 	root.Frame = geom.Rect{X: 0, Y: 0, W: w, H: h}
+	// 布局完成才能知道尺寸：此处一次后序+前序遍历，标记本帧的「纯静态子树」与
+	// 「缓存根」（未开启自动缓存时直接返回，零开销）。
+	a.startLayerFrame(root)
 	if fpsDebug {
 		a.dbgViewMs = msSince(frameT0)
 		frameT0 = time.Now()
@@ -706,6 +864,12 @@ func (a *App) frame(forced bool) {
 		}
 		a.hoverKey = hk
 	}
+	// 悬停坐标回调：鼠标停留期间每帧一次（节点内坐标），
+	// 自绘控件据此实现「鼠标停在标识符上就弹语法提示」。
+	if a.hoverNode != nil && a.hoverNode.OnHoverAt != nil {
+		ax, ay := a.visualOrigin(a.hoverNode, 0, 0)
+		a.hoverNode.OnHoverAt(a.mouseX-ax, a.mouseY-ay)
+	}
 
 	// 滚动条悬停/拖动
 	scrollBefore := a.scrollHoverKey
@@ -716,9 +880,9 @@ func (a *App) frame(forced bool) {
 		a.pressNode = hitInteractive(root, a.pressX, a.pressY, 0, a)
 		if a.pressNode != nil {
 			a.pressNode.Pressed = true
-			// OnPress：按下后的第一帧只分发一次
-			if a.pressNode.OnPress != nil && a.pressNode != a.pressFired {
-				a.pressFired = a.pressNode
+			// OnPress：整次按下只分发一次（拖选靠它记录锚点）
+			if a.pressNode.OnPress != nil && !a.pressSent {
+				a.pressSent = true
 				a.pressNode.OnPress()
 			}
 		}
@@ -744,6 +908,19 @@ func (a *App) frame(forced bool) {
 
 	// 平滑滚动推进（滚轮/轨道点击产生的目标位）
 	a.stepScrollAnim()
+	// 惯性滑动推进（触摸松手后的甩动）
+	a.stepFling()
+
+	// 右键菜单：命中节点有 OnRightClickAt 时分发（坐标相对节点左上角）
+	if a.rightPending {
+		a.rightPending = false
+		n := hitInteractive(root, a.rightX, a.rightY, 0, a)
+		if n != nil && n.OnRightClickAt != nil {
+			ax, ay := a.visualOrigin(n, 0, 0)
+			n.OnRightClickAt(a.rightX-ax, a.rightY-ay)
+			a.dirty = true
+		}
+	}
 
 	if a.clickPending {
 		a.clickPending = false
@@ -793,6 +970,7 @@ func (a *App) frame(forced bool) {
 	// 毛玻璃/大列表页面的流畅度提升很明显。
 	if !forced && probe && !hoverChanged && !scrollHoverChanged && !a.pressed && a.dragKey == "" && !a.clickPending && !a.animating {
 		a.updateImePosition()
+		a.syncIME()
 		return
 	}
 
@@ -826,7 +1004,12 @@ func (a *App) frame(forced bool) {
 	}
 	// 每帧重新收集 WebView 矩形：没画到的（滚出视口 / 切页）会在同步时被隐藏
 	clear(a.wvRects)
+	// 记录本帧起始的图表图号：空闲回收据此判断哪些图表纹理上一帧没画到
+	a.chartFrameBase = a.chartStamp
 	a.paint(root, 0)
+	// 本帧内容已全部进批次：此时把带 CacheLayer 的子树区域快照进缓存
+	//（必须排在 End 之前，End 会提交并清空批次，之后就拷不到本帧像素了）。
+	a.captureLayers()
 	a.r.End()
 	// 超高清：把超采样离屏结果降采样写回呈现目标（未开启时为空操作）
 	a.r.Resolve()
@@ -836,6 +1019,16 @@ func (a *App) frame(forced bool) {
 		a.win.ComposeEnd()
 	} else {
 		a.win.Swap()
+	}
+	// 首帧真的画完了再显示窗口：窗口创建时保持隐藏，
+	// 否则会先亮一下窗口类背景色（就是启动瞬间的白屏/闪一下）。
+	if !a.revealed {
+		a.revealed = true
+		if !a.opts.Hidden {
+			a.win.SetVisible(true)
+		}
+		// 热重载恢复现场时记下的「最大化」在这里才生效（避免窗口提前亮出来）。
+		hotAfterReveal(a)
 	}
 	if fpsDebug {
 		a.dbgPaintMs = msSince(frameT0)
@@ -854,9 +1047,13 @@ func (a *App) frame(forced bool) {
 	a.dbgBusy = busy
 	a.slowOnlyFrame = a.animating && !a.animFast && !busy &&
 		!a.pressed && a.dragKey == "" && a.scrollDragKey == "" &&
-		!a.clickPending && !a.isScrollAnimating()
+		!a.clickPending && !a.isScrollAnimating() && !a.isFlinging()
 	// 平滑滚动未到位：继续请求帧（不依赖 dirty，避免鼠标不动时停在半路）
 	if a.isScrollAnimating() {
+		a.animDirty = true
+	}
+	// 惯性滑动同样需要连续帧，直到速度衰减到阈值以下
+	if a.isFlinging() {
 		a.animDirty = true
 	}
 	// 滚动条淡出：隐停后还有一段淡出过渡，需继续重绘
@@ -869,6 +1066,9 @@ func (a *App) frame(forced bool) {
 	}
 
 	a.updateImePosition()
+	// Android：焦点变化时弹/收软键盘，并把输入法上屏的文本注入焦点控件
+	// （其它平台是空实现，见 ui/ime_android.go 与 ui/ime_other.go）。
+	a.syncIME()
 
 	a.frameCount++
 	a.lastPaint = time.Now()
@@ -917,6 +1117,36 @@ func (a *App) paint(n *Node, sy float32) {
 	}
 
 	clipped := st.Clip || n.Kind == KScroll
+
+	// 组件栅格缓存（Style.CacheLayer 或全局 SetCacheLayers 开启）：
+	// 命中则一张图贴回，整棵子树不再产生顶点、查字形、跑 SDF；
+	// 未命中则照常绘完这一帧，然后在本帧末尾把这块区域快照进纹理，下次直接命中。
+	// openedLayer 表示本节点下整棵子树都在待快照区域内，收尾时要复位，
+	// 避免兄弟节点把“已在缓存子树内”错当成自己的状态。
+	openedLayer := false
+	var openedShot *layerShot
+	if !a.layerOpen && (st.CacheLayer || (a.cacheLayers && n.cacheRoot)) {
+		cpr, clippedNow := a.currentClip()
+		if e := a.cachedLayer(n, r); e != nil {
+			a.layerHit++
+			// 贴回：圆角交给 img 着色器的 SDF 遮罩，圆角外的旧像素会被丢弃，
+			// 因此带圆角的卡片也能安全缓存。
+			// FlipY 必需：快照来自 glCopyTexSubImage2D，纹理第 0 行是屏幕下方。
+			a.r.DrawImage(gpu.Image{Rect: r, Tex: e.tex, FlipY: true, Tint: gpu.Paint{R: 1, G: 1, B: 1, A: 1}, Radius: st.Radius})
+			return
+		}
+		if a.layerCacheable(n, r, clippedNow, cpr) {
+			a.layerMiss++
+			// 快照必须在子树画完后立即拍：整帧末尾再拍会把后画的浮层
+			// （设置弹窗、下拉、Toast）一起拷进纹理，浮层关掉后就会残留。
+			shot := layerShot{key: n.layerKey, rect: r, fp: a.layerFingerprint(n), radius: st.Radius}
+			openedShot = &shot
+			a.layerOpen = true
+			openedLayer = true
+		} else {
+			a.layerRej++
+		}
+	}
 	if clipped {
 		a.pushClip(r)
 	}
@@ -963,10 +1193,16 @@ func (a *App) paint(n *Node, sy float32) {
 		a.paintWebView(n, r, st)
 	case KArrow:
 		a.paintArrow(r, st.Color)
+	case KIcon:
+		a.paintIcon(n, r, st)
 	case KChart:
 		a.paintChart(n, r)
 	case KRichText:
 		a.paintRichText(n, r, st)
+	case KCodeEditor:
+		a.paintCodeEditor(n, r)
+	case KTerm:
+		a.paintTerm(n, r)
 	}
 
 	childSy := sy
@@ -995,6 +1231,12 @@ func (a *App) paint(n *Node, sy float32) {
 
 	if clipped {
 		a.popClip()
+	}
+	if openedLayer {
+		a.layerOpen = false
+		if openedShot != nil {
+			a.storeLayer(openedShot.key, openedShot.rect, openedShot.fp, openedShot.radius)
+		}
 	}
 }
 
@@ -1086,6 +1328,7 @@ const scrollbarZone = 12
 
 // updateScrollbar 处理滚动条悬停、拖动与轨道点击。
 func (a *App) updateScrollbar(root *Node) {
+	prevHover := a.scrollHoverKey
 	a.scrollHoverKey = ""
 	// 拖动/缩放窗口期间：鼠标消息已进不了窗口，滚动条悬停与拖动状态一律冻结
 	if a.sizeMoving {
@@ -1094,6 +1337,11 @@ func (a *App) updateScrollbar(root *Node) {
 	if !a.mouseIn {
 		if !a.pressed {
 			a.scrollDragKey = ""
+		}
+		if prevHover != "" {
+			// 离开热区：从淡出起点重新计时（只在这一刻归零）
+			a.scrollIdle = 0
+			a.dirty = true
 		}
 		return
 	}
@@ -1118,10 +1366,19 @@ func (a *App) updateScrollbar(root *Node) {
 		if !a.pressed {
 			a.scrollDragKey = ""
 		}
+		if prevHover != "" {
+			a.scrollIdle = 0
+			a.dirty = true
+		}
 		return
 	}
 	a.scrollHoverKey = hit.Key
-	a.scrollIdle = 0
+	// 只在「进入热区」的那一帧归零：以前每帧都归零，会让 scrollbarFading()
+	// 恒真 → animDirty 恒真 → 鼠标停在任何滚动条上时整窗按 120fps 重绘。
+	if prevHover != hit.Key {
+		a.scrollIdle = 0
+		a.dirty = true
+	}
 	thumbH, maxScroll, ok := scrollbarMetrics(hit, hitRect)
 	if !ok || !a.pressed {
 		return
@@ -1269,7 +1526,7 @@ func (a *App) paintScrollbar(n *Node, r geom.Rect) {
 	if active {
 		w = 8
 		alpha = 0.42
-	} else if a.scrollIdle > 0.7 {
+	} else if a.scrollIdle > 0.7 && !n.Style.Scrollbar {
 		f := (a.scrollIdle - 0.7) / 0.7
 		if f > 1 {
 			f = 1
@@ -1316,8 +1573,9 @@ func (a *App) paintText(n *Node, r geom.Rect, st *Style) {
 	flh := f.LineHeight
 
 	tx := r.X + st.Pad.Left
-	// 与布局测量共用同一折行算法与缓存，行数严格一致
-	wrap := st.Wrap && n.wrapW > 0
+	// 与布局测量共用同一折行算法与缓存，行数严格一致。
+	// wrapW 非 0 表示布局期已决定折行（WrapOn 或纵向容器里的自动换行）。
+	wrap := n.wrapW > 0
 	var wlines []string
 	if wrap {
 		wlines = wrapLinesCached(f, n.Text, n.wrapW)
@@ -1338,34 +1596,52 @@ func (a *App) paintText(n *Node, r geom.Rect, st *Style) {
 		}
 	}
 
-	draw := func(ln string) {
-		x := tx
-		switch {
-		case n.Kind == KButton:
-			// 按钮内文字水平居中
-			x = r.X + (r.W-f.Measure(ln))/2
-		case st.TextAlign == AlignCenter:
-			x = r.X + (r.W-f.Measure(ln))/2
-		case st.TextAlign == AlignEnd:
-			x = r.Right() - f.Measure(ln) - st.Pad.Right
-		}
-
-		// 行内微调：行高大于字体行高时居中，小于时不能为负（否则顶部被裁）
-		vy := y
-		if lh > flh {
-			vy = y + (lh-flh)/2
-		}
-		a.r.TextRun(gpu.TextRun{X: x, Y: vy, Text: ln, Font: f, Color: st.Color})
-		y += lh
-	}
-	// 逐行直接绘制：不再为每个文本节点每帧分配行切片
 	if wrap {
 		for _, ln := range wlines {
-			draw(ln)
+			y = a.drawTextLine(n, r, st, f, ln, tx, y, lh, flh)
 		}
-	} else {
-		forEachLine(n.Text, draw)
+		return
 	}
+	// 逐行扫描：不建行切片，也不为每个文本节点每帧生成闭包（旧实现用 forEachLine
+	// 传闭包，一屏上百个文本节点就是上百次堆分配）。
+	s := n.Text
+	start := 0
+	for i := 0; i <= len(s); i++ {
+		if i == len(s) || s[i] == '\n' {
+			y = a.drawTextLine(n, r, st, f, s[start:i], tx, y, lh, flh)
+			start = i + 1
+		}
+	}
+}
+
+// drawTextLine 绘制一行文本，返回下一行的起始 y（避免热路径上的闭包分配）。
+func (a *App) drawTextLine(n *Node, r geom.Rect, st *Style, f *text.Font, ln string, tx, y, lh, flh float32) float32 {
+	x := tx
+	align := st.TextAlign
+	// RTL：AlignStart / AlignEnd 互换（AlignStart 表示「行首」，行首在右边）。
+	if IsRTL() {
+		switch align {
+		case AlignStart:
+			align = AlignEnd
+		case AlignEnd:
+			align = AlignStart
+		}
+	}
+	switch {
+	case n.Kind == KButton, align == AlignCenter:
+		// 按钮内文字与居中对齐：按行宽水平居中
+		x = r.X + (r.W-f.Measure(ln))/2
+	case align == AlignEnd:
+		x = r.Right() - f.Measure(ln) - st.Pad.Right
+	}
+
+	// 行内微调：行高大于字体行高时居中，小于时不能为负（否则顶部被裁）
+	vy := y
+	if lh > flh {
+		vy = y + (lh-flh)/2
+	}
+	a.r.TextRun(gpu.TextRun{X: x, Y: vy, Text: ln, Font: f, Color: st.Color})
+	return y + lh
 }
 
 func splitLines(s string) []string {
@@ -1442,11 +1718,11 @@ func hitTest(n *Node, x, y, sy float32, a *App) *Node {
 func inputPassthrough(n *Node) bool {
 	if n.OnClick != nil || n.OnPress != nil || n.OnClickAt != nil || n.OnDrag != nil ||
 		n.OnSpanClick != nil || n.OnKey != nil || n.OnChar != nil || n.OnDrop != nil ||
-		n.OnHover != nil || n.Style.Focusable {
+		n.OnHover != nil || n.OnHoverAt != nil || n.Style.Focusable {
 		return false
 	}
 	switch n.Kind {
-	case KScroll, KImage, KVideo, KWebView, KChart, KRichText, KArrow:
+	case KScroll, KImage, KVideo, KWebView, KChart, KRichText, KArrow, KTerm:
 		return false
 	}
 	if n.Style.Bg.A > 0 || n.Style.BgTo.A > 0 || n.Style.Border > 0 || n.Style.BackdropBlur > 0 {
@@ -1468,9 +1744,19 @@ const wheelStepSize = 96
 // 外层页面完全无法继续滚动，手感像卡住）。
 // 滚动目标写入 scrollTargets，由 stepScrollAnim 缓动到目标位，避免一格一跳的生硬感。
 func (a *App) handleWheel(x, y, dy float32) {
+	a.handleWheelAt(x, y, dy, false)
+}
+
+// handleWheelAt 滚轮 / 触摸拖动共用的滚动入口。
+//
+// instant=true（触摸拖动）时直接把偏移设到目标位，1:1 跟手；
+// instant=false（鼠标滚轮）仍走 setScrollTarget 的缓动，避免一格一跳。
+func (a *App) handleWheelAt(x, y, dy float32, instant bool) {
 	if a.root == nil || dy == 0 {
 		return
 	}
+	// 新的滚动输入立刻接管：惯性滑行中再滚一次不该和旧速度叠加
+	a.stopFling()
 	// dy 为轮转向（上正下负）：向下滚时偏移量增加
 	rem := -dy * wheelStepSize
 	if rem == 0 {
@@ -1498,7 +1784,11 @@ func (a *App) handleWheel(x, y, dy float32) {
 			nv = max
 		}
 		if used := nv - cur; used != 0 {
-			a.setScrollTarget(c.Key, nv, max)
+			if instant {
+				a.setScrollNow(c.Key, nv)
+			} else {
+				a.setScrollTarget(c.Key, nv, max)
+			}
 			rem -= used
 			changed = true
 		}
@@ -1506,6 +1796,19 @@ func (a *App) handleWheel(x, y, dy float32) {
 	if changed {
 		a.scrollIdle = 0
 		a.dirty = true
+	}
+	// 没有滚动容器吃掉滚轮时，交给命中节点自身的 OnScroll（自绘控件：
+	// 代码编辑器的虚拟滚动、无滚动容器的自定义列表）。
+	if rem != 0 {
+		if n := hitTest(a.root, x, y, 0, a); n != nil {
+			for c := n; c != nil; c = c.Parent {
+				if c.OnScroll != nil {
+					c.OnScroll(rem)
+					a.dirty = true
+					break
+				}
+			}
+		}
 	}
 }
 
@@ -1544,6 +1847,18 @@ func (a *App) setScrollTarget(key string, v, max float32) {
 	a.scrollTargets[key] = v
 }
 
+// setScrollNow 直接把偏移设到目标位并清掉缓动目标。
+//
+// 触摸拖动专用：手指到哪儿内容就到哪儿（1:1 跟手）。若走 setScrollTarget 的缓动，
+// 每帧只追 30% 剩余距离，滑动起来会有明显的「黏手 / 拖尾」。
+func (a *App) setScrollNow(key string, v float32) {
+	if a.scrolls == nil {
+		a.scrolls = map[string]float32{}
+	}
+	a.scrolls[key] = v
+	delete(a.scrollTargets, key)
+}
+
 // clampScroll 把当前偏移夹到合法范围（内容变短时避免停在空白处）。
 func (a *App) clampScroll(key string, max float32) {
 	if v, ok := a.scrolls[key]; ok {
@@ -1568,6 +1883,123 @@ func (a *App) Invalidate() { a.redrawRequest.Store(true) }
 // requestFrame 请求一次带滚动动画的尾帧（平滑滚动进行中时保证下一帧仍会绘制）。
 func (a *App) requestFrame() {
 	a.redrawRequest.Store(true)
+}
+
+// ---- 惯性滑动（移动端触摸甩动）----
+
+// 惯性滑动参数。
+//
+// flingDecay 是速度衰减系数（1/s）：v = v0 * exp(-decay*t)。3.2 对应「沙抬后约
+// 0.5s 速度剩 20%、1s 剩 4%」，甩动距离约 v0/3.2（2000px/s 约 600px，近一屏）。
+// 太小会滑得太远（像冰面），太大则一松手就停。
+// flingMinVel 是停止阈值（px/s）：低于此值视为自然停下。
+const (
+	flingDecay  = 3.2
+	flingMinVel = 24
+	// flingMaxVel 速度上限（px/s），防止采样跳动时甩飞一整页。
+	flingMaxVel = 5200
+)
+
+// StartFling 让指针下的滚动容器继续惯性滑动（触摸松手时由平台层调用）。
+//
+// vel 为逻辑像素/秒，正 = 内容继续向上（偏移增大），与「手指向上甩」对应。
+// 找不到可滚动的容器（已到底 / 不在滚动区）时静默忽略。
+func StartFling(x, y, vel float32) {
+	if a := currentApp.Load(); a != nil {
+		a.startFling(x, y, vel)
+	}
+}
+
+// startFling 启动惯性滑动：从指针命中的最内层容器开始，
+// 像滚轮一样要求该容器「沿这个方向还能滚」，否则冒泡给父容器。
+func (a *App) startFling(x, y, vel float32) {
+	if a == nil || a.root == nil || vel == 0 {
+		return
+	}
+	if vel > flingMaxVel {
+		vel = flingMaxVel
+	}
+	if vel < -flingMaxVel {
+		vel = -flingMaxVel
+	}
+	if vel > -flingMinVel && vel < flingMinVel {
+		a.stopFling()
+		return
+	}
+	n := hitTest(a.root, x, y, 0, a)
+	for c := n; c != nil; c = c.Parent {
+		if c.Kind != KScroll || c.Key == "" {
+			continue
+		}
+		max := c.ContentH - c.Frame.H
+		if max <= 0 {
+			continue
+		}
+		cur := a.scrolls[c.Key]
+		if (vel > 0 && cur < max) || (vel < 0 && cur > 0) {
+			a.flingKey, a.flingVel = c.Key, vel
+			// 惯性开始就接管缓动目标，否则两者会互相抵消
+			delete(a.scrollTargets, c.Key)
+			a.scrollIdle = 0
+			return
+		}
+	}
+	a.stopFling()
+}
+
+// stopFling 停止惯性滑动（新的输入 / 程序化跳转 / 到达边界）。
+func (a *App) stopFling() {
+	a.flingKey, a.flingVel = "", 0
+}
+
+// isFlinging 是否仍有惯性在滑。
+func (a *App) isFlinging() bool { return a != nil && a.flingKey != "" }
+
+// stepFling 推进惯性滑动：速度按指数衰减，偏移按速度积分，碰到边界就停。
+func (a *App) stepFling() {
+	if a.flingKey == "" {
+		return
+	}
+	dt := a.animDt
+	if dt <= 0 {
+		dt = 1.0 / 120
+	}
+	if dt > 0.05 {
+		dt = 0.05
+	}
+	key := a.flingKey
+	// 容器可能在切页后消失了：直接结束
+	var max float32
+	if a.root != nil {
+		if n := findKey(a.root, key); n != nil {
+			max = n.ContentH - n.Frame.H
+		}
+	}
+	if max <= 0 {
+		a.stopFling()
+		return
+	}
+	cur := a.scrolls[key]
+	next := cur + a.flingVel*dt
+	if next < 0 {
+		a.scrolls[key] = 0
+		a.stopFling()
+		a.dirty = true
+		return
+	}
+	if next > max {
+		a.scrolls[key] = max
+		a.stopFling()
+		a.dirty = true
+		return
+	}
+	a.scrolls[key] = next
+	// 指数衰减：与帧率无关（旧实现写死每帧乘一个系数，帧率一变手感就变）
+	a.flingVel *= float32(math.Exp(float64(-flingDecay * dt)))
+	if a.flingVel > -flingMinVel && a.flingVel < flingMinVel {
+		a.stopFling()
+	}
+	a.dirty = true
 }
 
 // isScrollAnimating 是否仍有滚动动画未到位。
@@ -1723,6 +2155,41 @@ func LastFrameOf(key string) (geom.Rect, bool) {
 	return r, true
 }
 
+// KeyFrameHeights 一次遍历上一帧的布局树，返回指定 Key 的高度（行高缓存用）。
+//
+// 替代「逐行 LastFrameOf」：后者每次都要从根节点找一遍，聊天记录上千行时
+// 是 O(行数 × 节点数)；这里只走一遍树。
+func KeyFrameHeights(keys []string) map[string]float32 {
+	out := make(map[string]float32, len(keys))
+	a := currentApp.Load()
+	if a == nil || a.root == nil || len(keys) == 0 {
+		return out
+	}
+	want := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		if k != "" {
+			want[k] = true
+		}
+	}
+	var walk func(*Node)
+	walk = func(n *Node) {
+		if n == nil || len(want) == 0 {
+			return
+		}
+		if n.Key != "" && n.Frame.H > 0 {
+			if _, ok := want[n.Key]; ok {
+				out[n.Key] = n.Frame.H
+				delete(want, n.Key)
+			}
+		}
+		for _, c := range n.Children {
+			walk(c)
+		}
+	}
+	walk(a.root)
+	return out
+}
+
 // ComposingText 返回当前窗口的 IME 组合串（未组合时为空）。
 func ComposingText() string {
 	if a := currentApp.Load(); a != nil {
@@ -1771,6 +2238,8 @@ func ScrollTo(key string, y float32) {
 	if a == nil || key == "" {
 		return
 	}
+	// 程序化跳转（导航 / 回到顶部）必须打断惯性，否则会先滑回去再跳
+	a.stopFling()
 	if y < 0 {
 		y = 0
 	}
@@ -1951,6 +2420,16 @@ func (a *App) RegisterHotkey(mods uint32, vk uint32, fn func()) int32 {
 // UnregisterHotkey 注销热键。
 func (a *App) UnregisterHotkey(id int32) { a.win.UnregisterHotkey(id) }
 
+// escQuitDisabled 关闭「无焦点时按 Esc 退出应用」的默认行为。
+//
+// 默认（false）保持旧行为：Esc 是关窗口的快捷方式。桌面 Agent / 编辑器这类应用里
+// Esc 另有语义（关浮层、打断生成、跳过片头），必须能关掉这个默认行为，
+// 否则片头动画期间按 Esc 会把整个应用退掉（叠加托盘销毁曾直接卡死）。
+var escQuitDisabled atomic.Bool
+
+// DisableEscQuit 关闭 / 恢复「无焦点时按 Esc 退出应用」。
+func DisableEscQuit(off bool) { escQuitDisabled.Store(off) }
+
 // OnKeyGlobal 给当前活跃窗口设置全局按键回调（无窗口时忽略）。
 func OnKeyGlobal(fn func(uint32)) {
 	if a := currentApp.Load(); a != nil {
@@ -1999,6 +2478,30 @@ func (a *App) ShowWindow(v bool) {
 	a.dirty = true
 }
 
+// Show 显示窗口并置前（隐藏到托盘后从托盘恢复）。
+func (a *App) Show() {
+	if a == nil || a.win == nil {
+		return
+	}
+	a.win.SetVisible(true)
+	a.win.Restore()
+	a.dirty = true
+	a.Invalidate()
+}
+
+// windowHidden 窗口是否被隐藏（例如关闭时收进托盘）。
+//
+// 后端未实现 Visible 时一律当成可见，保证老平台行为不变。
+func (a *App) windowHidden() bool {
+	if a == nil || a.win == nil {
+		return false
+	}
+	if h, ok := a.win.(interface{ Visible() bool }); ok {
+		return !h.Visible()
+	}
+	return false
+}
+
 // Minimize 最小化窗口。
 func (a *App) Minimize() { a.win.Minimize() }
 
@@ -2018,7 +2521,7 @@ func (a *App) BeginDragMove() {
 	a.win.BeginDragMove()
 	// 系统拖动期间会吞掉鼠标消息，返回后清掉按下状态，避免 Pressed 残留
 	a.pressed = false
-	a.pressFired = nil
+	a.pressSent = false
 	a.dragKey = ""
 	a.clickPending = false
 	a.dirty = true
@@ -2070,8 +2573,17 @@ func (a *App) Restore() { a.win.Restore(); a.dirty = true }
 // SetTitle 修改窗口标题。
 func (a *App) SetTitle(s string) { a.win.SetTitle(s) }
 
-// Close 关闭窗口。
+// Close 关闭窗口（会经过 SetOnClose 拦截，例如收进托盘）。
 func (a *App) Close() { a.win.Close() }
+
+// Quit 退出应用：跳过 SetOnClose 的关闭拦截（托盘菜单「退出」用）。
+func (a *App) Quit() {
+	if a == nil || a.win == nil {
+		return
+	}
+	a.quitting = true
+	a.win.Close()
+}
 
 // Post 在 UI 线程执行回调（可从任意 goroutine 调用）。
 func (a *App) Post(fn func()) {
@@ -2090,10 +2602,16 @@ const idleTrimAfter = 3 * time.Second
 // idleTrimDeepAfter 空闲多久后再把物理页交还系统（第二级，重新调页有微小代价）。
 const idleTrimDeepAfter = 30 * time.Second
 
-// trimCaches 释放可重建的显存占用（离屏目标 / 图表纹理 / 图片纹理）。
+// trimCaches 释放可重建的显存占用（离屏目标 / 组件缓存 / 图片纹理）。
 //
-// deep=true 时额外把本进程驻留的物理页交还系统（Windows 走 SetProcessWorkingSetSize），
-// 只在窗口最小化或长期壑置时调用。
+// deep=false 为浅空闲：窗口大概率还在屏幕上，只能回收「上一帧没画到」的资源。
+// 可见图片（皮肤壁纸 / 头像 / 缩略图）与可见图表的纹理必须留着：
+// 一旦释放，用户一动鼠标唤醒的那一帧就得重新异步解码 / 同步重光栅，
+// 而纹理回来之前那块区域是空的——表现为整窗闪一下。
+//
+// deep=true 时窗口不可见（最小化 / 收进托盘），资源全放掉，并把本进程驻留的
+// 物理页交还系统（Windows 走 SetProcessWorkingSetSize）。
+//
 // 只回收「下一帧会自动重建」的资源：字体图集重建代价是整页重新光栅化字形，
 // 窗口帧缓冲又属于系统合成链路，都不适合在这里动。
 func (a *App) trimCaches(deep bool) {
@@ -2102,19 +2620,37 @@ func (a *App) trimCaches(deep bool) {
 	}
 	a.win.MakeCurrent()
 	before := a.r.OffscreenBytes()
-	a.chartReleaseAll()
-	if a.textures != nil {
-		a.textures.releaseAll(a.r)
+	if deep {
+		a.chartReleaseAll()
+		a.iconReleaseAll()
+		if a.textures != nil {
+			a.textures.releaseAll(a.r)
+		}
+	} else {
+		a.chartReleaseIdle()
+		// 图标纹理重建是同步光栅化，不依赖后台解码，浅空闲也不影响画面；
+		// 但一屏图标重光栅化要几十毫秒，所以只在真无人看时回收。
+		if a.textures != nil {
+			a.textures.releaseIdle(a.r, int64(a.frameCount-1))
+		}
 	}
+	// 组件缓存也一并放掉：空闲时它没有任何价值，下一帧按需重新快照
+	a.layerReleaseAll()
 	a.r.ReleaseOffscreen()
+	// 字体图集是常驻内存的大头（Go 堆与显存各一份）：闲置 3 秒后收到的
+	// 字体确实没人要了，此时就按年龄淘汰到 idleKeepFonts。
+	// 旧实现只在深度空闲才收，而且 trimTo 的“本帧在用”保护会让它几乎没效果。
+	if a.fonts != nil {
+		a.fonts.trimIdle(idleKeepFonts)
+	}
 	// Go 堆：先做一次 GC + 归还未使用的页（Go 的 scavenager 是懒回收，
 	// 空闲时主动一次能把 sys 里的空 arena 真正还给系统）。
 	debug.FreeOSMemory()
 	if deep {
-		// 深度空闲（最小化 / 长时间不在前台）：把字体图集也收到最小集。
+		// 深度空闲（最小化 / 长时间不在前台）：把字体图集再收到最小集。
 		// 再次显示时首帧会按需重建，只多花一帧栅格化，换来几十 MB 常驻内存回落。
 		if a.fonts != nil {
-			a.fonts.trimTo(idleKeepFonts)
+			a.fonts.trimIdle(idleKeepFontsDeep)
 		}
 		trimProcessMemory()
 	}
@@ -2131,6 +2667,9 @@ func (a *App) dispose() {
 	a.closeWebViews()
 	a.win.MakeCurrent()
 	a.chartResetCache()
+	a.iconReleaseAll()
+	// 组件缓存纹理随 GL 上下文一条释放
+	a.layerReleaseAll()
 	// Markdown 渲染树缓存按窗口区分，关窗时一并释放，避免常驻节点树
 	mdDropTreeCache(a)
 	if a.r != nil {
@@ -2146,6 +2685,14 @@ func (a *App) dispose() {
 func (a *App) Dispose() {
 	unregisterApp(a)
 	a.dispose()
+}
+
+// FontCacheInfo 字体缓存的实例数与图集字节数（诊断 / 测试用）。
+func (a *App) FontCacheInfo() (fonts int, atlasBytes int) {
+	if a == nil || a.fonts == nil {
+		return 0, 0
+	}
+	return len(a.fonts.fonts), a.fonts.atlasBytes()
 }
 
 var _ = fmt.Sprintf

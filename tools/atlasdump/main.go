@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"gogui/internal/text"
+	"guis/internal/text"
 )
 
 func dumpGlyph(f *text.Font, r rune) {

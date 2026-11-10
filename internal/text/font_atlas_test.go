@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package text
 
@@ -34,14 +34,15 @@ func TestAtlasDirtyRegionCoversGlyph(t *testing.T) {
 	}
 }
 
-// atlasNonZeroBox 返回图集中已写入像素（alpha != 0）的包围盒（y 为纹理行号）。
+// atlasNonZeroBox 返回图集中已写入像素（覆盖率 != 0）的包围盒（y 为纹理行号）。
+// 单色图集是 R8（每像素 1 字节）。
 func atlasNonZeroBox(f *Font) (x0, y0, x1, y1 int, ok bool) {
 	dim := f.AtlasDimNow()
 	x0, y0, x1, y1 = dim, dim, -1, -1
 	for row := 0; row < dim; row++ {
-		base := row * dim * 4
+		base := row * dim
 		for x := 0; x < dim; x++ {
-			if f.Atlas[base+x*4+3] == 0 {
+			if f.Atlas[base+x] == 0 {
 				continue
 			}
 			if x < x0 {

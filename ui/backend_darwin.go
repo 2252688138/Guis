@@ -1,17 +1,17 @@
 //go:build darwin && !ios
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
 	"fmt"
 
-	"gogui/internal/cocoa"
-	"gogui/internal/gpu"
+	"guis/internal/cocoa"
+	"guis/internal/gpu"
 )
 
 // macOS 窗口后端：AppKit（purego objc_msgSend）+ NSOpenGLContext + OpenGL 3.2 Core。
@@ -87,6 +87,15 @@ func (p *platformWin) onCocoaEvent(ev cocoa.Event) {
 	case cocoa.EvResize:
 		e.Type = EvResize
 		e.Width, e.Height = ev.Width, ev.Height
+	case cocoa.EvDropFiles:
+		if !p.accepts {
+			return
+		}
+		e.Type = EvDropFiles
+		e.Paths = ev.Paths
+		// 落点用当前指针位置近似（NSDraggingInfo 给的是屏幕坐标，
+		// 换算成本窗口逻辑坐标需要再查窗口 frame，这里沿用指针位置更稳）
+		e.X, e.Y = MousePos()
 	case cocoa.EvClose:
 		e.Type = EvClose
 	case cocoa.EvFocusGained:
@@ -137,7 +146,7 @@ func (p *platformWin) AcceptDrops() bool      { return p.accepts }
 func (p *platformWin) SetImePosition(x, y int32) { p.w.SetImePosition(x, y) }
 
 // RegisterHotKey 全局热键需要 CGEventTap，一期返回 0（不支持）。
-func (p *platformWin) RegisterHotKey(mods, vk uint32, fn func()) int32 { return 0 }
+func (p *platformWin) RegisterHotKey(mods, vk uint32, fn func()) int32 { return registerDarwinHotkey(mods, vk, fn) }
 
 func (p *platformWin) UnregisterHotkey(id int32) {}
 

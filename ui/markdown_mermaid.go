@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -9,7 +9,7 @@ import "strings"
 
 // Mermaid 流程图（flowchart / graph）原生绘制。
 //
-// GoGUI 没有 JavaScript，也无法内嵌 mermaid.js，所以这里自己解析 flowchart 源码
+// GUIS 没有 JavaScript，也无法内嵌 mermaid.js，所以这里自己解析 flowchart 源码
 // 并用「原生节点 + 正交连线」画出来：
 //
 //	解析：A[文本] -->|标签| B{判断}，支持链式 A --> B --> C

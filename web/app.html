@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>GoGUI · Web</title>
+<title>GUIS · Web</title>
 <!--
-  GoGUI 浏览器版宿主页（与 cmd/gallery/main.go 同一份界面代码配套）：
+  GUIS 浏览器版宿主页（与 cmd/gallery/main.go 同一份界面代码配套）：
     - canvas#screen   渲染目标（WebGL 2；后端发现缺省会自动创建，这里显式提供）
     - #err            错误浮层（ui 包的 showPageError 写这里）
     - font.ttf        必需字体（与 index.html 同目录；可选 font-bold.ttf）
-    - __goguiStage / __goguiFrames  由 Go 侧写入，用于冒烟测试与加载完成判定
+    - __guisStage / __guisFrames  由 Go 侧写入，用于冒烟测试与加载完成判定
 -->
 <style>
   html, body { margin: 0; height: 100%; background: #0b0f19; overflow: hidden; }
@@ -72,7 +72,7 @@
     const running = go.run(result.instance);
     // 首帧画出来后淡出加载层
     const timer = setInterval(() => {
-      if (window.__goguiFrames > 0) {
+      if (window.__guisFrames > 0) {
         clearInterval(timer);
         boot.classList.add('hide');
       }

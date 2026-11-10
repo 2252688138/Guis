@@ -1,9 +1,9 @@
 //go:build !js
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -88,7 +88,7 @@ func mdDownload(url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "GoGUI-Markdown/1.0")
+	req.Header.Set("User-Agent", "GUIS-Markdown/1.0")
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -104,7 +104,7 @@ func mdDownload(url string) (string, error) {
 	if len(data) == 0 || len(data) > mdRemoteMaxBytes {
 		return "", errRemoteTooLarge
 	}
-	dir := filepath.Join(os.TempDir(), "gogui-md-img")
+	dir := filepath.Join(os.TempDir(), "guis-md-img")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}

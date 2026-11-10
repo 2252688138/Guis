@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 // winres 生成 Windows 资源目标文件（rsrc_windows_*.syso），把图标与版本信息
 // 编进 Go 可执行文件，零第三方依赖、零 cgo。
@@ -21,8 +21,8 @@
 // 用法：
 //
 //	go run ./tools/winres -out cmd/gallery/rsrc_windows_amd64.syso -arch amd64 \
-//	    -ico ui/assets/icon.ico -version 1.2.3 -product GoGUI \
-//	    -company "Go-gui" -desc "GoGUI 纯 Go 自绘 GUI 框架" \
+//	    -ico ui/assets/icon.ico -version 1.2.3 -product GUIS \
+//	    -company "guis" -desc "GUIS 纯 Go 自绘 GUI 框架" \
 //	    -copyright "Copyright (c) 2026 Mr.Shu" -commit 1a2b3c4 -channel release
 //
 // 参数全部可选：不给 -ico 就只写版本信息；不给 -version 时从 VERSION 文件读。
@@ -83,9 +83,9 @@ func main() {
 		manifest  = flag.String("manifest", "", "清单文件 .manifest（可选）")
 		verFile   = flag.String("verfile", "VERSION", "版本号文件（-version 为空时读取）")
 		version   = flag.String("version", "", "版本号，如 1.2.3；空则读 -verfile")
-		product   = flag.String("product", "GoGUI", "产品名")
-		company   = flag.String("company", "Go-gui", "公司 / 作者")
-		desc      = flag.String("desc", "GoGUI 纯 Go 自绘 GUI 框架", "文件说明")
+		product   = flag.String("product", "GUIS", "产品名")
+		company   = flag.String("company", "guis", "公司 / 作者")
+		desc      = flag.String("desc", "GUIS 纯 Go 自绘 GUI 框架", "文件说明")
 		copyright = flag.String("copyright", "Copyright (c) 2026 Mr.Shu", "版权声明")
 		internal  = flag.String("internal", "", "内部名称，默认取 -out 主文件名")
 		original  = flag.String("original", "", "原始文件名，默认取 -internal + .exe")

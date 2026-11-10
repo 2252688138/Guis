@@ -1,17 +1,37 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
 import (
+	"runtime"
 	"strings"
 	"syscall"
 	"unsafe"
 )
+
+var (
+	procCoInitializeEx = ole32L.NewProc("CoInitializeEx")
+	procCoUninitialize = ole32L.NewProc("CoUninitialize")
+)
+
+// comSTAInit 把当前线程临时初始化为 STA（单线程套间）。
+//
+// BIF_NEWDIALOGSTYLE 的文件夹选择器内部使用 Shell COM 控件；线程未初始化 COM 时
+// SHBrowseForFolderW 会在自己拉起的内层消息循环里一直等下去——表现为点击按钮后
+// 整个窗口不再重绘、像卡死一样。
+// 返回 true 表示本次调用成功（S_OK / S_FALSE），调用方需要配对 CoUninitialize。
+func comSTAInit() bool {
+	if procCoInitializeEx.Find() != nil {
+		return false
+	}
+	hr, _, _ := procCoInitializeEx.Call(0, 2) // COINIT_APARTMENTTHREADED
+	return uint32(hr) == 0 || uint32(hr) == 1 // S_OK / S_FALSE
+}
 
 // FileDialogFilter 把 "文本 (*.txt)|*.txt|所有文件|*.*" 转成 Win32 双 0 结尾格式。
 func FileDialogFilter(spec string) []uint16 {
@@ -147,7 +167,19 @@ func SaveFile(owner uintptr, title, filter, defExt string) (string, bool) {
 }
 
 // PickFolder 弹出「选择文件夹」对话框。
+//
+// 对话框与 COM 套间都绑定线程，Go 调度随时可能把 goroutine 挪走，所以先锁线程；
+// COM 初始化失败（例如线程已是 MTA）时退回经典样式，保证不会因 Shell 控件卡死。
 func PickFolder(owner uintptr, title string) (string, bool) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	flags := uint32(BIF_RETURNONLYFSDIRS)
+	if comSTAInit() {
+		defer procCoUninitialize.Call()
+		flags |= BIF_NEWDIALOGSTYLE
+	}
+
 	display := make([]uint16, 260)
 	var titleP *uint16
 	if title != "" {
@@ -158,7 +190,7 @@ func PickFolder(owner uintptr, title string) (string, bool) {
 		HwndOwner:      owner,
 		PszDisplayName: &display[0],
 		LpszTitle:      titleP,
-		UlFlags:        BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE,
+		UlFlags:        flags,
 	}
 	pidl := SHBrowseForFolderW(&bi)
 	if pidl == 0 {

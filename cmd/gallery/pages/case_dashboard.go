@@ -1,10 +1,10 @@
-// Go-gui — gallery 页面拆分：仪表盘
+// guis — gallery 页面拆分：仪表盘
 // 本文件属于 pages 包，与其它页面文件一起由 main.go 引入。
 
 package pages
 
 import (
-	"gogui/ui"
+	"guis/ui"
 	"strconv"
 )
 

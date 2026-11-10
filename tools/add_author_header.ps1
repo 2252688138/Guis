@@ -10,10 +10,10 @@ $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
 
 $HeaderLines = @(
-  ' Go-gui',
+  ' guis',
   ' Author  : Mr.Shu',
   ' Website : www.cq6k.com',
-  ' QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6'
+  ' QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6'
 )
 
 $changed = 0

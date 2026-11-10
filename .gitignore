@@ -4,6 +4,18 @@
 dist/
 web/dist/
 web/build.log
+
+# 本地子项目（不入库，保留在本机工作区）
+cmd/deepseek/
+cmd/guis-site/
+cmd/guis-site-web/
+
+# guis-site-web 内嵌资源（由 build-web-linux.ps1 生成，不入库）
+cmd/guis-site-web/assets/*
+!cmd/guis-site-web/assets/placeholder.txt
+# 服务端预压缩磁盘缓存（运行时生成）
+.compress-cache/
+**/.compress-cache/
 *.exe
 *.upx
 rsrc_windows_*.syso.bak
@@ -34,6 +46,7 @@ out*.txt
 *_dump*.txt
 *.bak
 *.tmp
+*.part
 
 # Go 测试与性能采样
 *.test

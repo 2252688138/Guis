@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"gogui/internal/win32"
+	"guis/internal/win32"
 )
 
 // TestMediaScrubSeekCommits 拖动中不阻塞且能拿到预览帧，松手后一次性定位到最终位置。

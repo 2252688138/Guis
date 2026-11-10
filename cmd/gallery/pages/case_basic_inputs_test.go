@@ -1,4 +1,4 @@
-// Go-gui — gallery 页面拆分：基础页输入控件的布局冒烟测试
+// guis — gallery 页面拆分：基础页输入控件的布局冒烟测试
 // 只做无窗口布局：确认新增的下拉框 / 多行输入等控件都能排布出有效尺寸。
 
 package pages
@@ -6,7 +6,7 @@ package pages
 import (
 	"testing"
 
-	"gogui/ui"
+	"guis/ui"
 )
 
 // findKeyNode 按 Key 深度查找节点（测试用）。

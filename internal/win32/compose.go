@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
@@ -78,7 +78,7 @@ const (
 
 // ComposeSupported B 阶段是否可用（D3D11 + dcomp + WGL 互操作齐备）。
 func ComposeSupported() bool {
-	if os.Getenv("GOGUI_COMPOSE") != "1" {
+	if os.Getenv("GUIS_COMPOSE") != "1" {
 		return false
 	}
 	return loadCompose() == nil

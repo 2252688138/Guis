@@ -1,9 +1,9 @@
 //go:build android && cgo
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package android
 
@@ -18,6 +18,7 @@ import "C"
 
 import (
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -36,8 +37,12 @@ import (
 var (
 	createOnce sync.Once
 	createMu   sync.Mutex
-	// OnCreate 应用主循环入口（由 mobile/android 的 main 设置）。
+	// OnCreate 应用主循环入口（由应用层 main 设置）。
 	OnCreate func()
+
+	// onCreateWait 等待应用层注入 OnCreate 的最长时间（测试可改成 0 跳过等待）。
+	// 见 startOnCreate 的时序说明。
+	onCreateWait = 5 * time.Second
 )
 
 //export ANativeActivity_onCreate
@@ -48,12 +53,35 @@ func ANativeActivity_onCreate(act *C.ANativeActivity, savedState unsafe.Pointer,
 	SetActivity(uintptr(unsafe.Pointer(act)))
 	// 装窗口 / 输入 / 销毁回调
 	C.gg_install_callbacks(act)
-	createMu.Lock()
-	fn := OnCreate
-	createMu.Unlock()
-	if fn != nil {
-		createOnce.Do(func() { go fn() })
-	}
+	// 启动应用主循环（等待应用层注入入口，见 startOnCreate）
+	startOnCreate()
+}
+
+// startOnCreate 启动应用主循环，必要时先等待应用层注入 OnCreate。
+//
+// 时序：NativeActivity 在 dlopen 之后立刻 dlsym 并调用 ANativeActivity_onCreate，
+// 而 Go 侧 main()（在那里赋值 OnCreate）此时可能还没被调度。旧实现在这里直接读
+// OnCreate，读到 nil 就永久放弃启动——表现为进程活着、CPU 0%、屏幕全黑、
+// logcat 一条日志都没有。现在最多等 onCreateWait 再放弃。
+func startOnCreate() {
+	// 放到独立 goroutine 里等：ANativeActivity_onCreate 跑在系统的 Activity 启动线程上，
+	// 在这里阻塞会拖慢启动（甚至触发 ANR）。
+	go func() {
+		deadline := time.Now().Add(onCreateWait)
+		for {
+			createMu.Lock()
+			fn := OnCreate
+			createMu.Unlock()
+			if fn != nil {
+				createOnce.Do(func() { go fn() })
+				return
+			}
+			if onCreateWait <= 0 || !time.Now().Before(deadline) {
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}()
 }
 
 //export ggGoWindowCreated

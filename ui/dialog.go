@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -192,19 +192,19 @@ func AlertDlg(key string, open bool, kind DialogKind, title, body string, onClos
 	return ModalPanel(DialogOpts{
 		Key: key, Open: open, Kind: kind, Title: title, Body: body,
 		Closable: true, OnClose: onClose,
-		OKLabel: "知道了", OnOK: onClose,
+		OKLabel: T("ui.dialog.gotIt"), OnOK: onClose,
 	})
 }
 
 // ConfirmDlg 确认弹窗（取消 + 确定）。
 func ConfirmDlg(key string, open bool, kind DialogKind, title, body, okLabel string, onCancel, onOK func()) *Node {
 	if okLabel == "" {
-		okLabel = "确定"
+		okLabel = T("ui.dialog.ok")
 	}
 	return ModalPanel(DialogOpts{
 		Key: key, Open: open, Kind: kind, Title: title, Body: body,
 		Closable: true, OnClose: onCancel,
-		CancelLabel: "取消", OKLabel: okLabel,
+		CancelLabel: T("ui.dialog.cancel"), OKLabel: okLabel,
 		OnCancel: onCancel, OnOK: onOK,
 	})
 }
@@ -256,7 +256,7 @@ func PromptDlg(key string, open bool, kind DialogKind, title, label, value, plac
 		).St(St().GapOf(8))
 	}
 	if okLabel == "" {
-		okLabel = "确定"
+		okLabel = T("ui.dialog.ok")
 	}
 	return ModalPanel(DialogOpts{
 		Key: key, Open: true, Kind: kind, Title: title, BodyNode: body,
@@ -266,7 +266,7 @@ func PromptDlg(key string, open bool, kind DialogKind, title, label, value, plac
 			}
 			SetFocus("")
 		},
-		CancelLabel: "取消", OKLabel: okLabel,
+		CancelLabel: T("ui.dialog.cancel"), OKLabel: okLabel,
 		OnCancel: func() {
 			if onCancel != nil {
 				onCancel()

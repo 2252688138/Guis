@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
@@ -108,6 +108,8 @@ const (
 	MFSourceReaderFlagEndOfStream = 0x4
 
 	vtI8 = 20
+	// vtUI8 PROPVARIANT 的无符号 64 位整数（MF_PD_DURATION 常用此类型）
+	vtUI8 = 21
 
 	// PacketKind 返回的包类型
 	PacketNone  = 0
@@ -322,6 +324,8 @@ type MFSourceReader struct {
 	eof      bool
 	closed   bool
 	mu       sync.Mutex
+	// lastTS 最近一次成功样本的时间戳：末尾的 ERROR 标志要用它判断“是不是已经到尾了”
+	lastTS time.Duration
 }
 
 // MFOpen 用系统解码器打开音频 / 视频文件。
@@ -415,11 +419,24 @@ func (r *MFSourceReader) probe() {
 		}
 		mt.Close()
 	}
-	// 时长（100ns）
+	// 时长（100ns）：MF 可能给 VT_I8 也可能给 VT_UI8，两种都要认。
+	// IMFSourceReader 只继承 IUnknown，vtable 槽位是：
+	// 3 GetStreamSelection / 4 SetStreamSelection / 5 GetNativeMediaType /
+	// 6 GetCurrentMediaType / 7 SetCurrentMediaType / 8 SetCurrentPosition /
+	// 9 ReadSample / 10 Flush / 11 GetServiceForStream / 12 GetPresentationAttribute。
 	var pv propVariant
 	key := MFPDAttributeDuration
-	if hr := comCall(r.ptr, 11, uintptr(MFSourceReaderAnyStream), uintptr(unsafe.Pointer(&key)), uintptr(unsafe.Pointer(&pv))); !comFail(hr) && pv.vt == vtI8 && pv.val > 0 {
-		r.duration = time.Duration(pv.val * 100)
+	if hr := comCall(r.ptr, 12, uintptr(MFSourceReaderAnyStream), uintptr(unsafe.Pointer(&key)), uintptr(unsafe.Pointer(&pv))); !comFail(hr) {
+		switch pv.vt {
+		case vtI8:
+			if pv.val > 0 {
+				r.duration = time.Duration(pv.val * 100)
+			}
+		case vtUI8:
+			if u := uint64(pv.val); u > 0 && u < 1<<62 {
+				r.duration = time.Duration(u * 100)
+			}
+		}
 	}
 }
 
@@ -607,6 +624,7 @@ func (r *MFSourceReader) seekLocked(d time.Duration) error {
 		return fmt.Errorf("跳转失败（0x%08x）", hr)
 	}
 	r.eof = false
+	r.lastTS = d
 	return nil
 }
 
@@ -708,6 +726,10 @@ func (r *MFSourceReader) readSample(stream int) (uintptr, time.Duration, bool, e
 		uintptr(unsafe.Pointer(&out.sample)))
 	runtime.KeepAlive(out)
 	flags, ts, sample := out.flags, out.ts, out.sample
+	at := time.Duration(ts * 100)
+	if ts > 0 {
+		r.lastTS = at
+	}
 	if comFail(hr) {
 		r.eof = true
 		return 0, 0, true, fmt.Errorf("系统解码读样本失败（0x%08x）", hr)
@@ -715,13 +737,22 @@ func (r *MFSourceReader) readSample(stream int) (uintptr, time.Duration, bool, e
 	if flags&MFSourceReaderFlagEndOfStream != 0 {
 		r.eof = true
 		comRelease(sample)
-		return 0, time.Duration(ts * 100), true, nil
+		return 0, at, true, nil
 	}
 	if flags&MFSourceReaderFlagError != 0 {
 		comRelease(sample)
-		return 0, 0, false, errors.New("系统解码器报告流错误")
+		if at <= 0 {
+			at = r.lastTS
+		}
+		// 文件末尾常见 ERROR 标志（实际就是流尾）：时长已知且已到尾就按 EOS 处理，
+		// 不要把正常播完当成解码失败（否则上层会一直抱着最后一帧等超时）。
+		if r.duration > 0 && at >= r.duration-time.Second {
+			r.eof = true
+			return 0, at, true, nil
+		}
+		return 0, at, false, errors.New("系统解码器报告流错误")
 	}
-	return sample, time.Duration(ts * 100), false, nil
+	return sample, at, false, nil
 }
 
 // Close 释放 reader。

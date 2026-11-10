@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -169,12 +169,159 @@ func PrintPreview(key string, doc Printable, zoom float32) *Node {
 		Text("打印预览").St(St().Text(13, 600, ColText)).Grow(1),
 		Text(fmt.Sprintf("共 %d 页", pages)).St(St().Text(11, 400, ColTextMuted)),
 		Btn("打印…", BtnPrimary, func() {
-			_, _ = Print(key, doc)
+			title := printTitle(key, doc)
+			// 失败必须回显：系统打印对话框打不开时改走内置对话框，
+			// 不再「点了没反应」。
+			if _, err := Print(title, doc); err != nil {
+				OpenPrintDialog(title, doc, err.Error())
+			}
 		}),
 	).St(St().GapOf(10)).AlignTo(AlignCenter)
-	return Column(bar, Divider(),
+	panel := Column(bar, Divider(),
 		Scroll(Row(list...).St(St().GapOf(24).Padding(20))).K(key+"-preview-scroll").
-			St(St().GrowTo(1))).St(St().GapOf(10).Padding(14).BgC(ColBgDeep))
+			St(St().GrowTo(1))).St(St().GapOf(10).Padding(14))
+	// 内置打印对话框叠在预览面板上（AbsFill 子节点不参与尺寸计算）。
+	return Column(panel, PrintDialogLayer()).St(St().BgC(ColBgDeep))
+}
+
+// Printers 可用打印机名（默认打印机排第一位；非 Windows / Web 端返回 nil）。
+func Printers() []string { return printList() }
+
+// DefaultPrinter 默认打印机名（没有则空串）。
+func DefaultPrinter() string { return printDefault() }
+
+// PrintTo 不弹系统对话框，直接打印到指定打印机。
+//
+// 适用于系统打印对话框不可用的环境（PrintDlgW 返回 CDERR_DIALOGFAILURE）：
+//
+//	ui.PrintTo(ui.DefaultPrinter(), "发票", doc)
+func PrintTo(printer, title string, doc Printable) (bool, error) {
+	if doc == nil {
+		return false, nil
+	}
+	return printTo(printer, title, doc)
+}
+
+// ---- 内置打印对话框（系统对话框不可用时的兜底）----
+
+// printPick 内置打印对话框的跨帧状态。
+var printPick struct {
+	open     bool
+	title    string
+	doc      Printable
+	reason   string
+	printers []string
+	sel      int
+}
+
+// PrintDialogOpen 当前是否有内置打印对话框在显示。
+func PrintDialogOpen() bool { return printPick.open }
+
+// OpenPrintDialog 打开内置打印对话框（打印机列表 + 打印 / 取消）。
+//
+// 一般不需要业务自己调：ui.PrintPreview 的「打印…」在系统打印对话框失败时
+// 会自动降级到它；需要自定义入口时也可直接调。
+func OpenPrintDialog(title string, doc Printable, reason string) {
+	printPick.open = true
+	printPick.title = title
+	printPick.doc = doc
+	printPick.reason = reason
+	printPick.sel = 0
+	printPick.printers = printList()
+	RequestRedraw()
+}
+
+// ClosePrintDialog 关闭内置打印对话框。
+func ClosePrintDialog() {
+	if !printPick.open {
+		return
+	}
+	printPick.open = false
+	RequestRedraw()
+}
+
+// PrintDialogLayer 内置打印对话框浮层（挂在根 Stack 上；未打开时返回 nil）。
+func PrintDialogLayer() *Node {
+	if !printPick.open {
+		return nil
+	}
+	body := make([]*Node, 0, 3)
+	if len(printPick.printers) == 0 {
+		body = append(body, Text("系统里没有检测到可用打印机").
+			St(St().Text(12.5, 500, ColDanger).WrapOn()))
+	} else {
+		rows := make([]*Node, 0, len(printPick.printers))
+		for i, name := range printPick.printers {
+			i, name := i, name
+			mark := Box().St(St().W(9).H(9).R(5).BgC(ColStroke))
+			if i == printPick.sel {
+				mark = Box().St(St().W(9).H(9).R(5).BgC(ColPrimary))
+			}
+			row := Row(
+				mark,
+				Text(name).St(St().Text(12.5, 500, ColText).GrowTo(1)),
+			).St(St().GapOf(10).Padding(9).R(8)).Tap(func() {
+				printPick.sel = i
+				RequestRedraw()
+			})
+			rows = append(rows, row)
+		}
+		body = append(body, Column(
+			Text(fmt.Sprintf("选择打印机（共 %d 台）", len(rows))).
+				St(St().Text(11.5, 400, ColTextMuted)),
+			Scroll(Column(rows...).St(St().GapOf(2))).St(St().H(168)),
+		).St(St().GapOf(8)))
+	}
+	if printPick.reason != "" {
+		body = append(body, Text("系统打印对话框不可用，已改用内置对话框："+printPick.reason).
+			St(St().Text(10.5, 400, ColTextMuted).WrapOn()))
+	}
+
+	var footer *Node
+	if len(printPick.printers) > 0 {
+		footer = Row(
+			Spacer(),
+			Btn("取消", BtnSecondary, func() { ClosePrintDialog() }),
+			Btn("打印", BtnPrimary, func() {
+				printer := printPick.printers[printPick.sel]
+				doc := printPick.doc
+				title := printPick.title
+				ClosePrintDialog()
+				if ok, err := PrintTo(printer, title, doc); err != nil {
+					ToastShow("打印失败：" + err.Error())
+				} else if ok {
+					ToastShow("已发送到打印机：" + printer)
+				}
+			}),
+		).St(St().GapOf(10)).AlignTo(AlignCenter)
+	} else {
+		footer = Row(Spacer(), Btn("关闭", BtnSecondary, func() { ClosePrintDialog() })).
+			St(St().GapOf(10)).AlignTo(AlignCenter)
+	}
+
+	return ModalPanel(DialogOpts{
+		Key:      "print-dlg",
+		Open:     true,
+		Kind:     DlgInfo,
+		Title:    "打印 · " + printPick.title,
+		BodyNode: Column(body...).St(St().GapOf(12)),
+		Footer:   footer,
+		Closable: true,
+		OnClose:  func() { ClosePrintDialog() },
+	})
+}
+
+// printTitle 打印任务名：文档自己带 Title() 就用它，否则回退到预览 key。
+func printTitle(key string, doc Printable) string {
+	if t, ok := doc.(interface{ Title() string }); ok {
+		if s := strings.TrimSpace(t.Title()); s != "" {
+			return s
+		}
+	}
+	if s := strings.TrimSpace(key); s != "" {
+		return s
+	}
+	return "打印"
 }
 
 // colorOr 空颜色回退默认值。

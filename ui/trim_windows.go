@@ -1,13 +1,13 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
-import "gogui/internal/win32"
+import "guis/internal/win32"
 
 // trimProcessMemory 把本进程可回收的物理页还给系统（空闲 / 最小化时调用）。
 // Windows 端让系统自行决定工作集大小；其它平台是空实现（见 trim_other.go）。

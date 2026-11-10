@@ -1,11 +1,14 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // 轻量语法着色：按「词法扫描」切出关键字/字符串/注释/数字/函数名等片段，
 // 渲染层再映射为颜色。不做完整 AST，目标是代码块可读性（对齐 Web 版
@@ -108,11 +111,15 @@ func mdScanCLike(s string, kw, types, builtins map[string]bool, commentPrefix st
 			add(string(rs[i:]), "com")
 			i = len(rs)
 		case strings.HasPrefix(string(rs[i:]), "/*"):
-			j := strings.Index(string(rs[i+2:]), "*/")
-			if j < 0 {
+			// strings.Index 返回**字节**偏移，但 rs 是 []rune 下标。
+			// 注释里出现中文（多字节）时字节数 > rune 数，直接拿来切 rs 会
+			// slice bounds out of range，把整个窗口打挂（真实踩过的崩溃）。
+			rest := string(rs[i+2:])
+			if k := strings.Index(rest, "*/"); k < 0 {
 				add(string(rs[i:]), "com")
 				i = len(rs)
 			} else {
+				j := utf8.RuneCountInString(rest[:k])
 				add(string(rs[i:i+2+j+2]), "com")
 				i += 2 + j + 2
 			}
@@ -472,11 +479,13 @@ func mdScanHTML(s string) []mdHLSpan {
 		r := rs[i]
 		switch {
 		case strings.HasPrefix(string(rs[i:]), "<!--"):
-			j := strings.Index(string(rs[i+4:]), "-->")
-			if j < 0 {
+			// 同块注释：字节偏移 → rune 数（HTML/XML 注释里常写中文）
+			rest := string(rs[i+4:])
+			if k := strings.Index(rest, "-->"); k < 0 {
 				add(string(rs[i:]), "com")
 				i = len(rs)
 			} else {
+				j := utf8.RuneCountInString(rest[:k])
 				add(string(rs[i:i+4+j+3]), "com")
 				i += 4 + j + 3
 			}
@@ -584,11 +593,13 @@ func mdScanCSS(s string) []mdHLSpan {
 		r := rs[i]
 		switch {
 		case strings.HasPrefix(string(rs[i:]), "/*"):
-			j := strings.Index(string(rs[i+2:]), "*/")
-			if j < 0 {
+			// 字节偏移 → rune 数（CSS 注释里同样可能有中文）
+			rest := string(rs[i+2:])
+			if k := strings.Index(rest, "*/"); k < 0 {
 				add(string(rs[i:]), "com")
 				i = len(rs)
 			} else {
+				j := utf8.RuneCountInString(rest[:k])
 				add(string(rs[i:i+2+j+2]), "com")
 				i += 2 + j + 2
 			}

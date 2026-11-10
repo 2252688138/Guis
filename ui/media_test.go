@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -220,11 +220,11 @@ func TestMediaSourceDecode(t *testing.T) {
 }
 
 // TestMediaSourceHLS 真实 HLS 直链播放（需网络）。运行方式：
-// 设置环境变量 GOGUI_HLS_TEST=<m3u8 地址> 后 go test ./ui/ -run TestMediaSourceHLS -v
+// 设置环境变量 GUIS_HLS_TEST=<m3u8 地址> 后 go test ./ui/ -run TestMediaSourceHLS -v
 func TestMediaSourceHLS(t *testing.T) {
-	u := strings.TrimSpace(os.Getenv("GOGUI_HLS_TEST"))
+	u := strings.TrimSpace(os.Getenv("GUIS_HLS_TEST"))
 	if u == "" {
-		t.Skip("未设置 GOGUI_HLS_TEST，跳过 HLS 联播测试")
+		t.Skip("未设置 GUIS_HLS_TEST，跳过 HLS 联播测试")
 	}
 	src, err := OpenMediaWith(u, MediaConfig{NoAudio: true})
 	if err != nil {

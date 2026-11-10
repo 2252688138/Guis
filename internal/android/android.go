@@ -1,9 +1,9 @@
 //go:build android && cgo
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 // Package android Android 原生窗口层：NativeActivity + EGL + GLES 3 + AInputQueue。
 //
@@ -23,6 +23,7 @@ package android
 #include <android/input.h>
 #include <android/keycodes.h>
 #include <android/looper.h>
+#include <android/log.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
@@ -34,6 +35,7 @@ static int32_t gg_predispatch(AInputQueue *q, AInputEvent *ev) { return AInputQu
 static void gg_finish(AInputQueue *q, AInputEvent *ev, int32_t handled) { AInputQueue_finishEvent(q, ev, handled); }
 static int gg_window_w(ANativeWindow *w) { return w ? ANativeWindow_getWidth(w) : 0; }
 static int gg_window_h(ANativeWindow *w) { return w ? ANativeWindow_getHeight(w) : 0; }
+static void gg_log(const char* m) { __android_log_print(4, "guis", "%s", m); }
 */
 import "C"
 
@@ -87,6 +89,15 @@ var (
 )
 
 // SetActivity 由 ANativeActivity_onCreate 回调注入。
+// Log 往 logcat 写一行（tag = guis）。
+//
+// 移动端没有控制台，fmt.Print / panic 堆栈都进 /dev/null，排查启动与输入问题时用它。
+func Log(msg string) {
+	cs := C.CString(msg)
+	defer C.free(unsafe.Pointer(cs))
+	C.gg_log(cs)
+}
+
 func SetActivity(a uintptr) {
 	mu.Lock()
 	activity = a
@@ -178,6 +189,11 @@ func createSurface(w uintptr) error {
 		return errors.New("android: eglMakeCurrent 失败")
 	}
 	C.eglSwapInterval(dpy, 1)
+	// 立刻归还上下文：EGL 上下文同一时刻只能在一个线程上 current，而这里跑在
+	// NativeActivity 的窗口回调线程上；真正的渲染是 ui.Run 的 UI goroutine，
+	// 它会在自己线程上 MakeCurrent（ui.newApp 里调用）。不归还的话 UI 线程
+	// 绑定失败，glCreateShader 全部返回 0（表现为 "shader compile failed: (no log)"）。
+	C.eglMakeCurrent(dpy, nil, nil, nil)
 
 	nw, nh := WindowSize()
 	mu.Lock()

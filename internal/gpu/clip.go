@@ -1,11 +1,11 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package gpu
 
-import "gogui/internal/geom"
+import "guis/internal/geom"
 
 // PushClip 开启一个裁剪矩形（与已有裁剪取交集）。
 func (r *Renderer) PushClip(c geom.Rect) {

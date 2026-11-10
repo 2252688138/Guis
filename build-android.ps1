@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-GoGUI Android 构建脚本：把 mobile/android 编译成 libgogui.so（NativeActivity 直接加载）。
+GUIS Android 构建脚本：把 mobile/android 编译成 libguis.so（NativeActivity 直接加载）。
 
 .DESCRIPTION
-  产物：dist/android/<abi>/libgogui.so
+  产物：dist/android/<abi>/libguis.so
   需要：Android NDK（自动探测 ANDROID_NDK_HOME / ANDROID_NDK_ROOT / <SDK>\ndk\*）
   说明：Android 端使用 cgo（移动端唯一可行路径），因此必须 CGO_ENABLED=1 且指定 NDK 的 clang。
 
@@ -65,7 +65,7 @@ foreach ($t in $targets) {
     }
     $abiDir = Join-Path $OutDir $t.Abi
     New-Item -ItemType Directory -Force -Path $abiDir | Out-Null
-    $so = Join-Path $abiDir 'libgogui.so'
+    $so = Join-Path $abiDir 'libguis.so'
 
     Write-Host ("[build] {0}  GOARCH={1}" -f $t.Abi, $t.GOARCH) -ForegroundColor Cyan
     $env:CC = $cc

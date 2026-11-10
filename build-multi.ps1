@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-GoGUI 多端构建脚本：一套 UI 代码，一次产出 Windows / Linux / macOS / Web 四端产物。
+GUIS 多端构建脚本：一套 UI 代码，一次产出 Windows / Linux / macOS / Web 四端产物。
 
 .DESCRIPTION
 与 build.ps1 的区别：
   build.ps1        只管 Windows 发布（图标资源 + NSIS 安装器 + UPX）
   build-multi.ps1  跑「多端编译矩阵」，验证并产出其它平台的二进制
 
-版本号与 build.ps1 共用 VERSION.txt，通过 -ldflags -X 注入 gogui/internal/version.*；
+版本号与 build.ps1 共用 VERSION.txt，通过 -ldflags -X 注入 guis/internal/version.*；
 桌面端一律 CGO_ENABLED=0（纯 Go + purego 动态加载系统库），产物无外部依赖。
 
 .EXAMPLE
@@ -44,10 +44,10 @@ $BuildTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
 $ldflags = @(
     '-s', '-w', '-buildid=',
-    "-X gogui/internal/version.Number=$Version",
-    "-X gogui/internal/version.Commit=$Commit",
-    "-X gogui/internal/version.BuildTime=$BuildTime",
-    '-X gogui/internal/version.Channel=dev'
+    "-X guis/internal/version.Number=$Version",
+    "-X guis/internal/version.Commit=$Commit",
+    "-X guis/internal/version.BuildTime=$BuildTime",
+    '-X guis/internal/version.Channel=dev'
 ) -join ' '
 
 if (-not (Test-Path -LiteralPath $OutDir)) {
@@ -58,11 +58,11 @@ $OutDirAbs = (Resolve-Path $OutDir).Path
 # ================= 构建矩阵 =================
 # 每项：名称 / GOOS / GOARCH / 是否加 windowsgui / 输出文件
 $matrix = @(
-    @{ Name = 'windows-amd64'; GOOS = 'windows'; GOARCH = 'amd64'; GUI = $true;  Out = 'gogui-windows-amd64.exe'; Pkg = './cmd/gallery' },
-    @{ Name = 'linux-amd64';   GOOS = 'linux';   GOARCH = 'amd64'; GUI = $false; Out = 'gogui-linux-amd64';       Pkg = './cmd/gallery' },
-    @{ Name = 'linux-arm64';   GOOS = 'linux';   GOARCH = 'arm64'; GUI = $false; Out = 'gogui-linux-arm64';       Pkg = './cmd/gallery' },
-    @{ Name = 'darwin-amd64';  GOOS = 'darwin';  GOARCH = 'amd64'; GUI = $false; Out = 'gogui-darwin-amd64';      Pkg = './cmd/gallery' },
-    @{ Name = 'darwin-arm64';  GOOS = 'darwin';  GOARCH = 'arm64'; GUI = $false; Out = 'gogui-darwin-arm64';      Pkg = './cmd/gallery' },
+    @{ Name = 'windows-amd64'; GOOS = 'windows'; GOARCH = 'amd64'; GUI = $true;  Out = 'guis-windows-amd64.exe'; Pkg = './cmd/gallery' },
+    @{ Name = 'linux-amd64';   GOOS = 'linux';   GOARCH = 'amd64'; GUI = $false; Out = 'guis-linux-amd64';       Pkg = './cmd/gallery' },
+    @{ Name = 'linux-arm64';   GOOS = 'linux';   GOARCH = 'arm64'; GUI = $false; Out = 'guis-linux-arm64';       Pkg = './cmd/gallery' },
+    @{ Name = 'darwin-amd64';  GOOS = 'darwin';  GOARCH = 'amd64'; GUI = $false; Out = 'guis-darwin-amd64';      Pkg = './cmd/gallery' },
+    @{ Name = 'darwin-arm64';  GOOS = 'darwin';  GOARCH = 'arm64'; GUI = $false; Out = 'guis-darwin-arm64';      Pkg = './cmd/gallery' },
     @{ Name = 'wasm';          GOOS = 'js';      GOARCH = 'wasm';  GUI = $false; Out = 'web\main.wasm';          Pkg = './cmd/gallery' }
 )
 

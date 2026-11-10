@@ -1,4 +1,4 @@
-// Go-gui — gallery 页面拆分：列表与表格页的布局冒烟测试
+// guis — gallery 页面拆分：列表与表格页的布局冒烟测试
 // 只做无窗口布局：确认两个页签的区块都能排出有效尺寸。
 
 package pages
@@ -6,7 +6,7 @@ package pages
 import (
 	"testing"
 
-	"gogui/ui"
+	"guis/ui"
 )
 
 // TestListsPageListTab 列表页签：文件树 / 图文卡片 / 列表 / 社区帖子 / 分页器都在。

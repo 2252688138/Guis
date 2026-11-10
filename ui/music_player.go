@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -72,7 +72,7 @@ func MusicPlayer(key string, s *MusicSource, opt MusicPlayerOptions) *Node {
 		key = "music"
 	}
 	if s == nil {
-		return Empty("未绑定音源", "用 ui.OpenMusic(\"song.mp3\") 打开音频文件")
+		return Empty(T("ui.music.unbound"), T("ui.music.unboundHint"))
 	}
 	if !s.Tick() && opt.Next != nil {
 		opt.Next()
@@ -94,7 +94,7 @@ func MusicPlayer(key string, s *MusicSource, opt MusicPlayerOptions) *Node {
 	cover := musicCover(key+"-cover", track, 104, s.Playing())
 
 	info := Column(
-		Text("正在播放 · NOW PLAYING").St(St().Text(10, 700, musicGold)),
+		Text(T("ui.music.nowPlaying") + " · NOW PLAYING").St(St().Text(10, 700, musicGold)),
 		Text(track.Title).St(St().Text(19, 700, ColText).WrapOn()),
 		Row(
 			Text(musicSubtitle(track)).St(St().Text(12, 400, "rgba(226,232,240,0.60)").WrapOn()).Grow(1),
@@ -118,7 +118,7 @@ func MusicPlayer(key string, s *MusicSource, opt MusicPlayerOptions) *Node {
 		videoSpeaker(key+"-vol", s.Muted(), 28, func() { s.ToggleMute() }),
 		musicVolBar(key+"-volbar", s, 62),
 		Spacer(),
-		videoTextBtn(key+"-loop", "循环", 40, s.Loop(), func() { s.SetLoop(!s.Loop()) }),
+		videoTextBtn(key+"-loop", T("ui.music.repeat"), 40, s.Loop(), func() { s.SetLoop(!s.Loop()) }),
 		videoTextBtn(key+"-speed", musicSpeedLabel(s.Speed()), 46, s.Speed() != 1, func() {
 			s.SetSpeed(nextSpeed(s.Speed()))
 		}),
@@ -137,7 +137,7 @@ func MusicPlayer(key string, s *MusicSource, opt MusicPlayerOptions) *Node {
 		If(!opt.HideSpectrum, func() *Node {
 			return Column(
 				Row(
-					Text("频谱").St(St().Text(9.5, 700, ColTextMuted)),
+					Text(T("ui.music.spectrum")).St(St().Text(9.5, 700, ColTextMuted)),
 					Spacer(),
 					Text(formatVideoTime(dur)).St(St().Text(9.5, 500, ColTextMuted)),
 				).St(St().Wp(100)).AlignTo(AlignCenter),
@@ -165,9 +165,9 @@ func musicSubtitle(t MusicTrack) string {
 		return t.Album
 	}
 	if t.Path != "" {
-		return "本地文件 · " + t.Path
+		return T("ui.music.local") + " · " + t.Path
 	}
-	return "未命名曲目"
+	return T("ui.music.untitled")
 }
 
 // musicCover 封面：有图片用图片，否则画一张黑胶唱片（播放时标记点随节奏旋转）。
@@ -375,7 +375,7 @@ func MusicMirrorSpectrum(key string, sp *Spectrum, bars int, from, to string) *N
 // tracks 的 Title 为空时回退到文件名；onPick 传回点击的下标（nil 时不可点）。
 func MusicPlaylist(key string, tracks []MusicTrack, active int, onPick func(i int)) *Node {
 	if len(tracks) == 0 {
-		return Text("播放列表为空").St(St().Text(12, 400, ColTextMuted).Padding(10))
+		return Text(T("ui.music.playlistEmpty")).St(St().Text(12, 400, ColTextMuted).Padding(10))
 	}
 	rows := make([]*Node, 0, len(tracks))
 	for i, t := range tracks {
@@ -393,7 +393,7 @@ func MusicPlaylist(key string, tracks []MusicTrack, active int, onPick func(i in
 		if title == "" {
 			title = strings.TrimSuffix(filepath.Base(t.Path), filepath.Ext(t.Path))
 			if title == "" {
-				title = "未命名曲目"
+				title = T("ui.music.untitled")
 			}
 		}
 		sub := musicSubtitle(t)
@@ -403,7 +403,7 @@ func MusicPlaylist(key string, tracks []MusicTrack, active int, onPick func(i in
 				Text(title).St(St().Text(12.5, 600, C(titleColor))),
 				Text(sub).St(St().Text(10.5, 400, ColTextMuted)),
 			).Grow(1).St(St().GapOf(2)),
-			If(on, func() *Node { return Tag("播放中", musicGold) }),
+			If(on, func() *Node { return Tag(T("ui.music.playing"), musicGold) }),
 		).St(St().GapOf(10).PadXY(10, 8).R(9).BgC(C(bg)))
 		row.K(fmt.Sprintf("%s-row-%d", key, i))
 		if onPick != nil {

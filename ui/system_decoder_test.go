@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -12,26 +12,26 @@ import (
 	"testing"
 	"time"
 
-	"gogui/internal/win32"
+	"guis/internal/win32"
 )
 
-// withDecoder 临时设置解码器偏好（GOGUI_DECODER），返回清理函数。
+// withDecoder 临时设置解码器偏好（GUIS_DECODER），返回清理函数。
 func withDecoder(t *testing.T, v string) {
 	t.Helper()
-	old, had := os.LookupEnv("GOGUI_DECODER")
-	if err := os.Setenv("GOGUI_DECODER", v); err != nil {
+	old, had := os.LookupEnv("GUIS_DECODER")
+	if err := os.Setenv("GUIS_DECODER", v); err != nil {
 		t.Fatalf("Setenv: %v", err)
 	}
 	t.Cleanup(func() {
 		if had {
-			_ = os.Setenv("GOGUI_DECODER", old)
+			_ = os.Setenv("GUIS_DECODER", old)
 		} else {
-			_ = os.Unsetenv("GOGUI_DECODER")
+			_ = os.Unsetenv("GUIS_DECODER")
 		}
 	})
 }
 
-// TestDecoderPreference GOGUI_DECODER 环境变量解析。
+// TestDecoderPreference GUIS_DECODER 环境变量解析。
 func TestDecoderPreference(t *testing.T) {
 	cases := []struct{ env, want string }{
 		{"", "auto"},

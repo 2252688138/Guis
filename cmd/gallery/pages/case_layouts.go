@@ -1,11 +1,11 @@
-// Go-gui — gallery 页面拆分：布局实验室
+// guis — gallery 页面拆分：布局实验室
 // 本文件属于 pages 包，与其它页面文件一起由 main.go 引入。
 
 package pages
 
 import (
 	"fmt"
-	"gogui/ui"
+	"guis/ui"
 	"strconv"
 )
 

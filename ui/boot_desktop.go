@@ -1,9 +1,9 @@
 //go:build !js
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -26,5 +26,15 @@ func prepareRun(opts *Options) {
 // 现在统一写到 stderr（桌面端带控制台或重定向日志时可见），
 // 消息里已包含 panic 值与 goroutine 堆栈（见 Run 里的 debug.Stack）。
 func reportPanic(msg string) {
-	fmt.Fprintf(os.Stderr, "[gogui] 运行期 panic（界面已停止）：\n%s\n", msg)
+	fmt.Fprintf(os.Stderr, "[guis] 运行期 panic（界面已停止）：\n%s\n", msg)
+	// GUI 子系统（windowsgui / .app）下 stderr 没有人看得见：只写日志等于
+	// 「双击后窗口一闪就没了」。这里补一次系统原生消息框（不依赖 GL / 窗口，
+	// 因此在初始化失败时同样有效）。CI / 自动化可用 GUIS_NO_MSGBOX=1 关掉。
+	if os.Getenv("GUIS_NO_MSGBOX") == "" {
+		body := msg
+		if len(body) > 1200 {
+			body = body[:1200] + "\n…（完整堆栈见崩溃日志）"
+		}
+		MessageBoxEx("程序发生错误", body, MsgError, MsgBoxOK)
+	}
 }

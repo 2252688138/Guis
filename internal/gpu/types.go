@@ -1,14 +1,14 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 // Package gpu 提供与平台/UI 解耦的 2D GPU 渲染后端接口及 OpenGL 3.3 实现。
 package gpu
 
 import (
-	"gogui/internal/geom"
-	"gogui/internal/text"
+	"guis/internal/geom"
+	"guis/internal/text"
 )
 
 // Paint 颜色（RGBA，0~1）。
@@ -70,6 +70,11 @@ type Image struct {
 	Radius [4]float32
 	// Rot 顺时针旋转的 90° 份数（0~3）：仅旋转采样坐标，Rect 保持不变
 	Rot int
+	// FlipY 垂直翻转采样坐标。
+	// glCopyTexSubImage2D 拷进纹理时，纹理第 0 行对应「屏幕下方」，
+	// 而 DrawImage 默认把 v=0 当作「图像顶部」——组件栅格缓存贴回时必须置 true，
+	// 否则整块内容会上下颠倒。
+	FlipY bool
 }
 
 // Texture 一张 GPU 纹理。

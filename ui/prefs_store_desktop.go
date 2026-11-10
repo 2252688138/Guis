@@ -1,9 +1,9 @@
 //go:build !js
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -39,7 +39,7 @@ func prefsSaveRaw(buf []byte) error {
 	return os.Rename(tmp, path)
 }
 
-// defaultPrefsPath 偏好文件路径：用户配置目录/gogui/prefs.json。
+// defaultPrefsPath 偏好文件路径：用户配置目录/guis/prefs.json。
 func defaultPrefsPath() string {
 	dir, err := os.UserConfigDir()
 	if err != nil || dir == "" {
@@ -51,5 +51,5 @@ func defaultPrefsPath() string {
 		ext := filepath.Ext(base)
 		name = strings.TrimSuffix(base, ext)
 	}
-	return filepath.Join(dir, "gogui", name+"-prefs.json")
+	return filepath.Join(dir, "guis", name+"-prefs.json")
 }

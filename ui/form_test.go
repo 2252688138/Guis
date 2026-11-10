@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -126,6 +126,41 @@ func TestFormLayoutSmoke(t *testing.T) {
 		if n.Frame.W <= 0 || n.Frame.H <= 0 {
 			t.Fatalf("%s 尺寸无效: %.1fx%.1f", k, n.Frame.W, n.Frame.H)
 		}
+	}
+}
+
+// TestNumberInputValueVisible 数字步进器的中间输入区必须有实际宽度：
+// 只给 Grow(1) 时 flex 基础尺寸为 0，在「收缩适应」的行里会塌成 0，
+// 数值文本被裁剪，只剩 − / + 两个按钮（空框）。
+func TestNumberInputValueVisible(t *testing.T) {
+	root := FormItemInline("步数", false, "", NumberInput("t-numw", 25, 3, 100, 1, nil))
+	LayoutForTest(root, 640, 120, "Microsoft YaHei UI", 1)
+
+	box := findKey(root, "t-numw")
+	if box == nil {
+		t.Fatal("缺少数字输入节点")
+	}
+	if box.Frame.W < 60 {
+		t.Fatalf("数字输入框宽度 = %.1f，数值会被裁掉", box.Frame.W)
+	}
+	var findText func(n *Node, want string) *Node
+	findText = func(n *Node, want string) *Node {
+		if n.Kind == KText && n.Text == want {
+			return n
+		}
+		for _, c := range n.Children {
+			if got := findText(c, want); got != nil {
+				return got
+			}
+		}
+		return nil
+	}
+	tv := findText(box, "25")
+	if tv == nil {
+		t.Fatal("数值文本节点缺失")
+	}
+	if tv.Frame.W < 10 || tv.Frame.X+tv.Frame.W > box.Frame.X+box.Frame.W {
+		t.Fatalf("数值文本 %.1fx%.1f @%.1f 超出输入框 %.1f 宽", tv.Frame.W, tv.Frame.H, tv.Frame.X, box.Frame.W)
 	}
 }
 

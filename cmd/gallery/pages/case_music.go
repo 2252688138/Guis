@@ -1,11 +1,11 @@
-// Go-gui — gallery 页面拆分：音乐播放器
+// guis — gallery 页面拆分：音乐播放器
 // 本文件属于 pages 包，与其它页面文件一起由 main.go 引入。
 
 package pages
 
 import (
 	"fmt"
-	"gogui/ui"
+	"guis/ui"
 	"math"
 	"os"
 	"path/filepath"
@@ -21,9 +21,9 @@ type musicDemo struct {
 }
 
 var musicDemos = []musicDemo{
-	{"Sunrise Drive", "GoGUI Synth", "Demo Album · Vol.1", 220.0, 112, 1},
-	{"Neon Nights", "GoGUI Synth", "Demo Album · Vol.1", 164.8, 128, 2},
-	{"Midnight Rain", "GoGUI Synth", "Demo Album · Vol.2", 196.0, 92, 3},
+	{"Sunrise Drive", "GUIS Synth", "Demo Album · Vol.1", 220.0, 112, 1},
+	{"Neon Nights", "GUIS Synth", "Demo Album · Vol.1", 164.8, 128, 2},
+	{"Midnight Rain", "GUIS Synth", "Demo Album · Vol.2", 196.0, 92, 3},
 }
 
 var (
@@ -43,7 +43,7 @@ func musicDemoPath(i int) string {
 	if err != nil {
 		dir = os.TempDir()
 	}
-	dir = filepath.Join(dir, "gogui-gallery")
+	dir = filepath.Join(dir, "guis-gallery")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ""
 	}
@@ -68,7 +68,9 @@ func writeDemoWAV(path string, d musicDemo) error {
 	beat := 60.0 / float64(d.bpm)
 	// 大调音阶（主音 → 八度），琶音按 1-3-5 跳进
 	scale := []float64{1, 9.0 / 8, 5.0 / 4, 3.0 / 2, 5.0 / 3, 2, 5.0 / 2}
-	rnd := uint32(2463534242 + d.seed*7919)
+	// 32 位平台（armeabi-v7a）上 int 只有 4 字节，2463534242 超出 int 范围，
+	// 必须先转 uint32 再相加，否则 GOARCH=arm 直接编译失败。
+	rnd := uint32(2463534242) + uint32(d.seed*7919)
 	noise := func() float64 {
 		rnd ^= rnd << 13
 		rnd ^= rnd >> 17

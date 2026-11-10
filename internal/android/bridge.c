@@ -26,6 +26,8 @@ extern void ggGoWindowDestroyed(void);
 extern void ggGoInputQueueCreated(AInputQueue *q);
 extern void ggGoInputQueueDestroyed(void);
 extern void ggGoAppDestroyed(void);
+/* ime.c：固定 Activity 全局引用（输入法桥取 ClassLoader 用） */
+extern void gg_ime_capture(JNIEnv *env, jobject activity, JavaVM *vm);
 
 static void gg_cb_window_created(ANativeActivity *a, ANativeWindow *w) {
     ggGoWindowCreated(w);
@@ -66,6 +68,9 @@ static void gg_cb_destroy(ANativeActivity *a) {
 }
 
 void gg_install_callbacks(ANativeActivity *a) {
+    /* 固定 Activity 全局引用：ime.c 的输入法桥要靠它取 ClassLoader。
+     * onCreate 回调是唯一能拿到「有效 local ref」的时机，之后 a->clazz 可能已失效。 */
+    gg_ime_capture(a->env, a->clazz, a->vm);
     if (a == NULL || a->callbacks == NULL) {
         return;
     }

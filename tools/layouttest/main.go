@@ -3,7 +3,7 @@
 package main
 
 import (
-	"gogui/ui"
+	"guis/ui"
 )
 
 func statCard(title, value, unit string) *ui.Node {
@@ -19,7 +19,7 @@ func statCard(title, value, unit string) *ui.Node {
 func view() *ui.Node {
 	return ui.Row(
 		ui.Column(
-			ui.Text("GoGUI").St(ui.St().Text(20, 700, "#e8ecff").PadOnly(0, 0, 4, 0)),
+			ui.Text("GUIS").St(ui.St().Text(20, 700, "#e8ecff").PadOnly(0, 0, 4, 0)),
 			ui.Text("自绘 GUI 框架").St(ui.St().Text(12, 400, "#5b6480").PadOnly(0, 0, 24, 0)),
 			ui.Button("仪表盘", nil).St(ui.St().Text(13, 600, "#ffffff").PadXY(14, 10).R(10).W(180)),
 			ui.Spacer(),

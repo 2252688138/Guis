@@ -1,29 +1,29 @@
 //go:build ios && cgo
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
-// iOS 应用入口：编译成 libgogui.a（c-archive），由 Xcode 工程的 AppDelegate 调用。
+// iOS 应用入口：编译成 libguis.a（c-archive），由 Xcode 工程的 AppDelegate 调用。
 //
 // 构建（仅在 macOS + Xcode 上可用）：
 //
 //	GOOS=ios GOARCH=arm64 CGO_ENABLED=1 \
-//	  go build -buildmode=c-archive -o ios/libgogui.a ./mobile/ios
+//	  go build -buildmode=c-archive -o ios/libguis.a ./mobile/ios
 //
 // Xcode 侧需要在 main.m 里调用 Go 导出的 `StartGoUI()`（见 ios/README.md）。
 package main
 
 import (
-	"gogui/ui"
+	"guis/ui"
 )
 
 // view 演示界面（与 android 示例同构）。
 func view() *ui.Node {
 	return ui.Column(
 		ui.Row(
-			ui.Text("GoGUI").St(ui.St().Text(22, 700, ui.ColText)),
+			ui.Text("GUIS").St(ui.St().Text(22, 700, ui.ColText)),
 			ui.Spacer(),
 			ui.Tag("iOS", ui.ColPrimary),
 		).St(ui.St().PadXY(18, 16)),
@@ -50,6 +50,6 @@ func main() {
 //export StartGoUI
 func StartGoUI() {
 	go func() {
-		_ = ui.Run(ui.Options{Title: "GoGUI", Width: 390, Height: 844}, view)
+		_ = ui.Run(ui.Options{Title: "GUIS", Width: 390, Height: 844}, view)
 	}()
 }

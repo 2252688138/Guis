@@ -1,9 +1,9 @@
 //go:build (linux || freebsd) && !android
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 // Package x11 极简 Xlib 绑定（purego 动态加载 libX11，零 cgo）。
 //
@@ -116,6 +116,8 @@ func Load() error {
 		bind(&xSendEvent, "XSendEvent")
 		bind(&xResourceManagerStr, "XResourceManagerString")
 		bind(&xGetGeometry, "XGetGeometry")
+		// 系统集成（热键 / 托盘 / 拖入）需要的额外符号，见 proto.go
+		bindProto(h)
 		if xOpenDisplay == nil {
 			loadErr = errors.New("x11: libX11 缺少 XOpenDisplay 符号")
 		}

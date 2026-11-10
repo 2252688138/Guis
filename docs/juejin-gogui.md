@@ -1,9 +1,9 @@
 # 纯 Go、零 CGO：我手写了一个不用 WebView 的 Web 风格 GUI 框架
 
 > 6.45 MB → 4.54 MB → 1.52 MB；一个矩形 6 个顶点、22 个 float；圆角、描边、阴影、毛玻璃、超采样、中文排版全部自己画。
-> 这篇文章拆解 GoGUI 的渲染管线、布局引擎、字体图集，以及 9 个把我按在地上摩擦过的坑。
+> 这篇文章拆解 GUIS 的渲染管线、布局引擎、字体图集，以及 9 个把我按在地上摩擦过的坑。
 
-仓库地址：<https://github.com/2252688138/Go-gui>
+仓库地址：<https://github.com/2252688138/guis>
 规模：129 个 Go 源文件、约 3.8 万行（含示例与工具），MIT 协议。
 
 ---
@@ -26,7 +26,7 @@ Go 写桌面程序，绕不开三条路：
 - **样式可编程**：不要 CSS 字符串解析，要类型安全的链式 API；
 - **性能可控**：静止时不重绘，滚动和动画不掉帧。
 
-于是有了 GoGUI：`ui` 层完全平台无关，下面用 `purego` 动态加载 Win32 / WGL，用 OpenGL 3.3 做 2D 批处理渲染，`x/image/font/opentype` 做字形光栅化。**没有一行 cgo**。
+于是有了 GUIS：`ui` 层完全平台无关，下面用 `purego` 动态加载 Win32 / WGL，用 OpenGL 3.3 做 2D 批处理渲染，`x/image/font/opentype` 做字形光栅化。**没有一行 cgo**。
 
 ---
 
@@ -34,13 +34,13 @@ Go 写桌面程序，绕不开三条路：
 
 真实运行截图（1180×760，深色主题；图片托管在仓库 `ui/assets`，若掘金未自动转存，可在本地同名路径找到原图）：
 
-![仪表盘](https://raw.githubusercontent.com/2252688138/Go-gui/main/ui/assets/%E4%BB%AA%E8%A1%A8%E7%9B%98.png)
+![仪表盘](https://raw.githubusercontent.com/2252688138/guis/main/ui/assets/%E4%BB%AA%E8%A1%A8%E7%9B%98.png)
 
-![图表组件](https://raw.githubusercontent.com/2252688138/Go-gui/main/ui/assets/%E5%9B%BE%E8%A1%A8%E7%BB%84%E4%BB%B6.png)
+![图表组件](https://raw.githubusercontent.com/2252688138/guis/main/ui/assets/%E5%9B%BE%E8%A1%A8%E7%BB%84%E4%BB%B6.png)
 
-![Markdown 渲染](https://raw.githubusercontent.com/2252688138/Go-gui/main/ui/assets/markdown%E6%B8%B2%E6%9F%93.png)
+![Markdown 渲染](https://raw.githubusercontent.com/2252688138/guis/main/ui/assets/markdown%E6%B8%B2%E6%9F%93.png)
 
-![浅色主题](https://raw.githubusercontent.com/2252688138/Go-gui/main/ui/assets/%E6%B5%85%E8%89%B2%E4%B8%BB%E9%A2%98.png)
+![浅色主题](https://raw.githubusercontent.com/2252688138/guis/main/ui/assets/%E6%B5%85%E8%89%B2%E4%B8%BB%E9%A2%98.png)
 
 这些界面里没有 HTML、没有 CSS、没有 WebView 参与主体渲染，全部是 OpenGL 画的。
 
@@ -49,7 +49,7 @@ Go 写桌面程序，绕不开三条路：
 ```go
 package main
 
-import "gogui/ui"
+import "guis/ui"
 
 func main() {
 	ui.Run(ui.Options{
@@ -147,7 +147,7 @@ pos(2) | local(2) | color(4) | color2(4) | halfSize(2) | radius4(4) | params(4)
 
 ## 3. 声明式 UI：每帧重建，不做 diff
 
-GoGUI 的 `view()` 是一个**纯函数**：每次重绘都重新构造整棵组件树，框架重新 measure / arrange / paint。没有虚拟 DOM，没有 diff，没有 Key 复用（Key 只用于保存滚动偏移和交互状态）。
+GUIS 的 `view()` 是一个**纯函数**：每次重绘都重新构造整棵组件树，框架重新 measure / arrange / paint。没有虚拟 DOM，没有 diff，没有 Key 复用（Key 只用于保存滚动偏移和交互状态）。
 
 ```go
 var current = "dashboard"
@@ -440,10 +440,10 @@ func (fc *fontCache) evictOldest() {
 }
 ```
 
-实测（`GOGUI_MEMSTATS=1`，gallery 运行时的示例输出）：
+实测（`GUIS_MEMSTATS=1`，gallery 运行时的示例输出）：
 
 ```
-[gogui] frames=120 heap=19.4MB inuse=20.6MB sys=27.7MB gc=2 fonts=13 atlas=3.2MB images=0
+[guis] frames=120 heap=19.4MB inuse=20.6MB sys=27.7MB gc=2 fonts=13 atlas=3.2MB images=0
 ```
 
 13 个字体实例，图集总共 3.2MB。换成旧的固定 2048²，光图集就是 13 × 16MB = 208MB。
@@ -481,7 +481,7 @@ if (uTextGamma != 1.0 && lum > 0.5) {
 }
 ```
 
-只对「亮字」（暗底浅字）补偿；暗字浅底时线性混合反而更淡，不需要再拉。实测 `1/1.8 ≈ 0.55` 与浏览器观感最接近，可用 `GOGUI_TEXT_GAMMA` 覆盖。
+只对「亮字」（暗底浅字）补偿；暗字浅底时线性混合反而更淡，不需要再拉。实测 `1/1.8 ≈ 0.55` 与浏览器观感最接近，可用 `GUIS_TEXT_GAMMA` 覆盖。
 
 ### 6.5 Emoji 回退链
 
@@ -599,7 +599,7 @@ if (uSharpen > 0.0) {
 }
 ```
 
-默认 0.4（`GOGUI_SS_SHARPEN` 可调），只补回被平滑掉的一小部分高频，既保留抗锯齿，又不出现白色光晕。
+默认 0.4（`GUIS_SS_SHARPEN` 可调），只补回被平滑掉的一小部分高频，既保留抗锯齿，又不出现白色光晕。
 
 ### 7.4 像素预算与半透明背景
 
@@ -612,7 +612,7 @@ if (uSharpen > 0.0) {
 
 ## 8. 多媒体：不引 cgo，也能播 mp4
 
-播放音视频不一定非要链接 FFmpeg 动态库。GoGUI 的做法是**把 ffmpeg 当子进程用**：
+播放音视频不一定非要链接 FFmpeg 动态库。GUIS 的做法是**把 ffmpeg 当子进程用**：
 
 ```go
 p, err := ui.NewMediaPlayer("movie.mkv") // 或 m3u8 直链
@@ -653,7 +653,7 @@ ui.VideoPlayer("vp", p).St(ui.St().H(420))
 `ui.OpenMedia` 先探测 PATH 里有没有 `ffmpeg` / `ffprobe`，没有则走 Windows Media Foundation：
 
 ```go
-os.Setenv("GOGUI_DECODER", "system")
+os.Setenv("GUIS_DECODER", "system")
 src, _ := ui.NewMediaPlayer("movie.mp4")
 fmt.Println(src.Info().Backend) // system
 ```
@@ -773,10 +773,10 @@ ui.Pager(ui.PagerOptions{Key: "list", Page: 2, Total: 9, Locked: 6, OnPick: goPa
 | 字体 mmap | `MapViewOfFile` 映射字体文件 | 不占 Go 堆 |
 | 媒体帧环上限 | 48MB / 2 秒 | 播放长视频内存可控 |
 
-`GOGUI_MEMSTATS=1` 可以每 120 帧打印一次内存构成：
+`GUIS_MEMSTATS=1` 可以每 120 帧打印一次内存构成：
 
 ```
-[gogui] frames=120 heap=19.4MB inuse=20.6MB sys=27.7MB gc=2 fonts=13 atlas=3.2MB images=0
+[guis] frames=120 heap=19.4MB inuse=20.6MB sys=27.7MB gc=2 fonts=13 atlas=3.2MB images=0
 ```
 
 ---
@@ -830,7 +830,7 @@ HWND 托管模式下，网页像素不进入 GL 批次，所以：
 - 不能做 3D 变换；
 - 圆角只能 `SetWindowRgn` 硬裁剪。
 
-现在的策略是：浮层展开时临时隐藏网页；`GOGUI_COMPOSE=1` 时尝试 DComp 合成（实验性），失败自动回退。
+现在的策略是：浮层展开时临时隐藏网页；`GUIS_COMPOSE=1` 时尝试 DComp 合成（实验性），失败自动回退。
 
 ### 11.7 `WM_DROPFILES` 没有 dragover
 
@@ -875,13 +875,13 @@ HWND 托管模式下，网页像素不进入 GL 批次，所以：
 
 | 位置 | 注入方式 | 读取方式 |
 | --- | --- | --- |
-| 运行时 | `-ldflags -X gogui/internal/version.Number=...` | `version.String()` |
+| 运行时 | `-ldflags -X guis/internal/version.Number=...` | `version.String()` |
 | exe 文件属性 | `tools/winres` 生成 syso | 右键 → 详细信息 |
 | 安装器 | `makensis /DVERSION=...` | 「应用和功能」里的版本 |
 
 ```go
 version.String()   // v0.1.0
-version.Title()    // GoGUI v0.1.0（窗口标题）
+version.Title()    // GUIS v0.1.0（窗口标题）
 version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 ```
 
@@ -889,14 +889,14 @@ version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 
 | 选项 | 安装目录 | 注册表 | 权限 |
 | --- | --- | --- | --- |
-| 仅为我安装（默认） | `%LOCALAPPDATA%\Programs\GoGUI` | HKCU | 无需管理员 |
-| 为所有用户安装 | `%ProgramFiles%\GoGUI` | HKLM | 未提权自动 UAC 重入 |
+| 仅为我安装（默认） | `%LOCALAPPDATA%\Programs\GUIS` | HKCU | 无需管理员 |
+| 为所有用户安装 | `%ProgramFiles%\GUIS` | HKLM | 未提权自动 UAC 重入 |
 
 静默安装：
 
 ```powershell
-GoGUI-0.1.0-setup.exe /S /currentuser /D=D:\Apps\GoGUI
-GoGUI-0.1.0-setup.exe /S /allusers
+GUIS-0.1.0-setup.exe /S /currentuser /D=D:\Apps\GUIS
+GUIS-0.1.0-setup.exe /S /allusers
 ```
 
 `/D` 必须是最后一个参数，路径不加引号。
@@ -932,8 +932,8 @@ WASM 侧复用同一套 `ui` 树：`internal/gpu/glport_wasm.go` 提供 WebGL2 �
 ## 15. 上手
 
 ```bash
-git clone https://github.com/2252688138/Go-gui
-cd Go-gui
+git clone https://github.com/2252688138/guis
+cd guis
 
 go run ./cmd/gallery          # 8 个分类页（含页内页签）
 go run ./cmd/gallery --case table
@@ -950,7 +950,7 @@ go run ./tools/atlasdump      # ASCII 打印字形图集
 
 或者在运行参数里设置 `DumpLayout: "layout.txt"`，首帧后导出布局树并退出。
 
-组件清单与「按文件模块化引入」的说明在 [`ui/COMPONENTS.md`](https://github.com/2252688138/Go-gui/blob/main/ui/COMPONENTS.md)：每个组件只依赖 `internal/*` 和基础节点，拷进新项目即可用。
+组件清单与「按文件模块化引入」的说明在 [`ui/COMPONENTS.md`](https://github.com/2252688138/guis/blob/main/ui/COMPONENTS.md)：每个组件只依赖 `internal/*` 和基础节点，拷进新项目即可用。
 
 ---
 
@@ -971,6 +971,6 @@ go run ./tools/atlasdump      # ASCII 打印字形图集
 
 自绘 GUI 的本质是**把浏览器那一层重新实现一遍，但只实现你需要的部分**。它不轻松，但每一行都在掌控之中——这大概就是造轮子的全部乐趣。
 
-如果这个项目对你有帮助，欢迎 Star：<https://github.com/2252688138/Go-gui>
+如果这个项目对你有帮助，欢迎 Star：<https://github.com/2252688138/guis>
 
 有问题也可以在仓库提 Issue，或者加 QQ 群交流（见仓库作者信息）。

@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"gogui/internal/gpu"
+	"guis/internal/gpu"
 )
 
 // C 颜色构造：支持 "#rgb" "#rrggbb" "#rrggbbaa" "rgb(1,2,3)" 以及 uint32 0xRRGGBB。

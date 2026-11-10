@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -63,6 +63,10 @@ type Event struct {
 
 	// Pointer 指针类型：0 = 鼠标，1 = 触摸/手写笔（移动端）。
 	Pointer int
+
+	// Cancel 本次指针事件用来「取消点击」：触摸滑动后松手时置位。
+	// 只影响 EvMouseUp 的点击分发：滚动一段后手指落点上的卡片 / 按钮不该被点开。
+	Cancel bool
 
 	Paths    []string
 	HotkeyID int

@@ -1,14 +1,14 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package gpu
 
 import (
 	"math"
 
-	"gogui/internal/geom"
+	"guis/internal/geom"
 )
 
 // fboRT 离屏渲染目标（纹理 + 帧缓冲）。
@@ -92,15 +92,14 @@ func (r *Renderer) blurPass(src uint32, dst *fboRT, radius float32) {
 	glViewport(0, 0, dst.w, dst.h)
 	glDisable(GL_SCISSOR_TEST)
 	r.clipOn = false
-	glUseProgram(r.blurProg)
+	r.useProg(r.blurProg)
 	glUniform1i(r.uBlurTex, 0)
-	glActiveTexture(GL_TEXTURE0)
-	glBindTexture(GL_TEXTURE_2D, src)
+	r.bindTex(src)
 	glUniform2f(r.uBlurTexel, 1/float32(dst.w), 1/float32(dst.h))
 	glUniform1f(r.uBlurRadius, radius)
-	glBindVertexArray(r.blurVAO)
+	r.bindVAO(r.blurVAO)
 	glDrawArrays(GL_TRIANGLES, 0, 6)
-	glBindVertexArray(0)
+	r.bindVAO(0)
 }
 
 // Backdrop 实现 backdrop-filter 毛玻璃：捕获当前帧已绘制内容，
@@ -139,8 +138,7 @@ func (r *Renderer) Backdrop(rect geom.Rect, radius [4]float32, blur float32, tin
 
 	// 捕获已绘制背景到纹理
 	src := r.ensureRT(&r.srcTex, w, h)
-	glActiveTexture(GL_TEXTURE0)
-	glBindTexture(GL_TEXTURE_2D, src.tex.ID)
+	r.bindTex(src.tex.ID)
 	glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, x0, y0, w, h)
 
 	// 逐级降采样（模糊半径随层级自然放大）
@@ -172,6 +170,10 @@ func (r *Renderer) Backdrop(rect geom.Rect, radius [4]float32, blur float32, tin
 		Tex:    b.tex,
 		Tint:   Paint{R: 1, G: 1, B: 1, A: 1},
 		Radius: radius,
+		// FlipY 必需：模糊结果是 glCopyTexSubImage2D 抓的屏幕快照，
+		// 纹理第 0 行是屏幕底部；不翻转贴回来就是上下颠倒
+		// （表现为毛玻璃面板里的背景图倒着，与组件栅格缓存同理）。
+		FlipY: true,
 	})
 	if tint.A > 0 {
 		r.Rect(Shape{Rect: rect, Radius: radius, Fill: tint})

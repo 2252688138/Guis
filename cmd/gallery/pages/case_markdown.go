@@ -1,10 +1,10 @@
-// Go-gui — gallery 页面拆分：Markdown 渲染
+// guis — gallery 页面拆分：Markdown 渲染
 // 本文件属于 pages 包，与其它页面文件一起由 main.go 引入。
 
 package pages
 
 import (
-	"gogui/ui"
+	"guis/ui"
 )
 
 // ---- 案例：Markdown 渲染 ----
@@ -13,18 +13,18 @@ import (
 var MdTab = "gfm"
 
 // mdSampleGFM GFM 基础语法。
-const mdSampleGFM = `# GoGUI Markdown 渲染
+const mdSampleGFM = `# GUIS Markdown 渲染
 
 参照 Web 版 **Markdown.vue** 的渲染思路：*块级解析* → ~~行内样式~~ → 组件映射。
 行内支持：**加粗**、*斜体*、***粗斜体***、~~删除线~~、「行内代码」、==高亮==、[链接](https://go.dev)、<kbd>Ctrl</kbd>+<kbd>S</kbd>。
 
-![GoGUI 图标](frontend/public/favicon.ico)
+![GUIS 图标](frontend/public/favicon.ico)
 
 ## 二级标题
 
 ### 三级标题
 
-普通段落会自动折行：GoGUI 的 KText 只支持单一样式，组件在解析阶段把行内片段切成 token，
+普通段落会自动折行：GUIS 的 KText 只支持单一样式，组件在解析阶段把行内片段切成 token，
 按可用宽度做贪心折行（中文逐字可断，英文按空格断行），因此长段落、窄窗口都不会溢出容器。
 
 > 引用块：支持多行引用。
@@ -45,7 +45,7 @@ const mdSampleGFM = `# GoGUI Markdown 渲染
 2. 第二项
 3. 第三项
 
-| 能力 | Web 版 | GoGUI 版 |
+| 能力 | Web 版 | GUIS 版 |
 | --- | :---: | --- |
 | 标题 / 段落 / 列表 | ✅ | ✅ |
 | 代码高亮 | highlight.js | 内置轻量着色 |
@@ -98,7 +98,7 @@ func main() {
 
 ## 卡片
 
-[card title="GoGUI" subtitle="纯 Go 的即时模式 GUI" url="https://go.dev"]
+[card title="GUIS" subtitle="纯 Go 的即时模式 GUI" url="https://go.dev"]
 卡片正文支持 **行内样式** 与列表：
 
 - 声明式节点
@@ -126,7 +126,7 @@ func main() {
 `
 
 // mdSampleCode 代码高亮样本。
-const mdSampleCode = "# 代码块渲染\n\n代码块会自动识别语言做轻量着色（关键字 / 字符串 / 注释 / 数字 / 函数名），\n并带行号、复制按钮；超过 22 行自动折叠。\n\n```go\npackage main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\n// Greet 返回问候语\nfunc Greet(name string) string {\n\tif strings.TrimSpace(name) == \"\" {\n\t\tname = \"GoGUI\"\n\t}\n\treturn fmt.Sprintf(\"hello, %s\", name)\n}\n\nfunc main() {\n\tfmt.Println(Greet(\"markdown\"))\n}\n```\n\n```typescript\ninterface User {\n  id: number\n  name: string\n}\n\nexport async function load(id: number): Promise<User> {\n  const res = await fetch(`/api/users/${id}`)\n  if (!res.ok) throw new Error('load failed')\n  return res.json()\n}\n```\n\n```python\ndef fib(n: int) -> int:\n    \"\"\"斐波那契\"\"\"\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n\nprint(fib(10))\n```\n\n```json\n{\n  \"name\": \"gogui\",\n  \"markdown\": true,\n  \"version\": 1.0\n}\n```\n\n```bash\n# 运行示例\ngo run ./cmd/gallery --case markdown\n```\n"
+const mdSampleCode = "# 代码块渲染\n\n代码块会自动识别语言做轻量着色（关键字 / 字符串 / 注释 / 数字 / 函数名），\n并带行号、复制按钮；超过 22 行自动折叠。\n\n```go\npackage main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\n// Greet 返回问候语\nfunc Greet(name string) string {\n\tif strings.TrimSpace(name) == \"\" {\n\t\tname = \"GUIS\"\n\t}\n\treturn fmt.Sprintf(\"hello, %s\", name)\n}\n\nfunc main() {\n\tfmt.Println(Greet(\"markdown\"))\n}\n```\n\n```typescript\ninterface User {\n  id: number\n  name: string\n}\n\nexport async function load(id: number): Promise<User> {\n  const res = await fetch(`/api/users/${id}`)\n  if (!res.ok) throw new Error('load failed')\n  return res.json()\n}\n```\n\n```python\ndef fib(n: int) -> int:\n    \"\"\"斐波那契\"\"\"\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n\nprint(fib(10))\n```\n\n```json\n{\n  \"name\": \"guis\",\n  \"markdown\": true,\n  \"version\": 1.0\n}\n```\n\n```bash\n# 运行示例\ngo run ./cmd/gallery --case markdown\n```\n"
 
 // mdSampleLong 长文 + 目录。
 const mdSampleLong = `# 长文与目录
@@ -290,7 +290,8 @@ func markdownCase() *ui.Node {
 			src = d.src
 		}
 	}
-	w := ui.ViewportW() - 232 - 96
+	// 内容区排版宽度：视口减去左侧导航（宽度自适应，见 pages/shell.go）与页面内边距。
+	w := ui.ViewportW() - NavWidth() - 96
 	if w < 320 {
 		w = 320
 	}

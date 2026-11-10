@@ -1,17 +1,17 @@
 //go:build ios && cgo
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
 	"errors"
 
-	"gogui/internal/gpu"
-	"gogui/internal/uikit"
+	"guis/internal/gpu"
+	"guis/internal/uikit"
 )
 
 // iOS 窗口后端：UIKit + EAGL + GLES 3（cgo）。
@@ -24,7 +24,7 @@ import (
 // 构建（macOS）：
 //
 //	GOOS=ios GOARCH=arm64 CGO_ENABLED=1 \
-//	  go build -buildmode=c-archive -o libgogui.a ./mobile/ios
+//	  go build -buildmode=c-archive -o libguis.a ./mobile/ios
 
 // platformWin iOS 端窗口。
 type platformWin struct {

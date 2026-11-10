@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -107,44 +108,65 @@ type monitorInfoExW struct {
 	SzDevice  [32]uint16
 }
 
+// 回调句柄只创建一次：syscall.NewCallback 的槽位数有限（约 2000 个），耗尽后
+// runtime 直接 fatal error: too many callback functions。旧实现每次 Monitors()
+// 都新建回调，而 UI 可能每帧调用，跑一两千帧后必崩。
+// 结果通过包级累加器回传：EnumDisplayMonitors 是同步调用，回调就在本线程执行。
+var (
+	enumMonitorsCBOnce sync.Once
+	enumMonitorsCB     uintptr
+
+	monitorsMu  sync.Mutex
+	monitorsAcc []MonitorInfo
+)
+
+// enumMonitorProc EnumDisplayMonitors 的回调（进程内唯一）。
+func enumMonitorProc(hMonitor, hdc, lprc uintptr, data uintptr) uintptr {
+	var mi monitorInfoExW
+	mi.CbSize = uint32(unsafe.Sizeof(mi))
+	r, _, _ := procGetMonitorInfoW.Call(hMonitor, uintptr(unsafe.Pointer(&mi)))
+	if r == 0 {
+		return 1
+	}
+	scale := float32(1)
+	if procGetDpiForMonitor.Find() == nil {
+		var dx, dy uint32
+		if hr, _, _ := procGetDpiForMonitor.Call(hMonitor, 0, uintptr(unsafe.Pointer(&dx)), uintptr(unsafe.Pointer(&dy))); hr == 0 && dx > 0 {
+			scale = float32(dx) / 96
+		}
+	}
+	name := ""
+	for i := 0; i < len(mi.SzDevice); i++ {
+		if mi.SzDevice[i] == 0 {
+			break
+		}
+		name += string(rune(mi.SzDevice[i]))
+	}
+	monitorsAcc = append(monitorsAcc, MonitorInfo{
+		Index: len(monitorsAcc), Name: name,
+		X: int(mi.RcMonitor.Left), Y: int(mi.RcMonitor.Top),
+		W:     int(mi.RcMonitor.Right - mi.RcMonitor.Left),
+		H:     int(mi.RcMonitor.Bottom - mi.RcMonitor.Top),
+		WorkX: int(mi.RcWork.Left), WorkY: int(mi.RcWork.Top),
+		WorkW:   int(mi.RcWork.Right - mi.RcWork.Left),
+		WorkH:   int(mi.RcWork.Bottom - mi.RcWork.Top),
+		Scale:   scale,
+		Primary: mi.DwFlags&1 != 0,
+	})
+	return 1
+}
+
 // Monitors 枚举所有显示器（顺序与系统一致，主屏优先标记）。
 func Monitors() []MonitorInfo {
-	out := make([]MonitorInfo, 0, 2)
-	cb := syscall.NewCallback(func(hMonitor, hdc, lprc uintptr, data uintptr) uintptr {
-		var mi monitorInfoExW
-		mi.CbSize = uint32(unsafe.Sizeof(mi))
-		r, _, _ := procGetMonitorInfoW.Call(hMonitor, uintptr(unsafe.Pointer(&mi)))
-		if r == 0 {
-			return 1
-		}
-		scale := float32(1)
-		if procGetDpiForMonitor.Find() == nil {
-			var dx, dy uint32
-			if hr, _, _ := procGetDpiForMonitor.Call(hMonitor, 0, uintptr(unsafe.Pointer(&dx)), uintptr(unsafe.Pointer(&dy))); hr == 0 && dx > 0 {
-				scale = float32(dx) / 96
-			}
-		}
-		name := ""
-		for i := 0; i < len(mi.SzDevice); i++ {
-			if mi.SzDevice[i] == 0 {
-				break
-			}
-			name += string(rune(mi.SzDevice[i]))
-		}
-		out = append(out, MonitorInfo{
-			Index: len(out), Name: name,
-			X: int(mi.RcMonitor.Left), Y: int(mi.RcMonitor.Top),
-			W:     int(mi.RcMonitor.Right - mi.RcMonitor.Left),
-			H:     int(mi.RcMonitor.Bottom - mi.RcMonitor.Top),
-			WorkX: int(mi.RcWork.Left), WorkY: int(mi.RcWork.Top),
-			WorkW:   int(mi.RcWork.Right - mi.RcWork.Left),
-			WorkH:   int(mi.RcWork.Bottom - mi.RcWork.Top),
-			Scale:   scale,
-			Primary: mi.DwFlags&1 != 0,
-		})
-		return 1
+	enumMonitorsCBOnce.Do(func() {
+		enumMonitorsCB = syscall.NewCallback(enumMonitorProc)
 	})
-	procEnumDisplayMonitors.Call(0, 0, cb, 0)
+	monitorsMu.Lock()
+	monitorsAcc = monitorsAcc[:0]
+	procEnumDisplayMonitors.Call(0, 0, enumMonitorsCB, 0)
+	out := make([]MonitorInfo, len(monitorsAcc))
+	copy(out, monitorsAcc)
+	monitorsMu.Unlock()
 	// 主屏排到最前（界面里通常先展示主屏）
 	for i := 1; i < len(out); i++ {
 		if out[i].Primary {
@@ -372,7 +394,7 @@ func keyDown(vk uintptr) bool {
 
 // SingleInstance 创建命名互斥体；返回 true 表示本进程是首个实例。
 func SingleInstance(key string) bool {
-	name, err := syscall.UTF16PtrFromString(`Local\gogui-` + key)
+	name, err := syscall.UTF16PtrFromString(`Local\guis-` + key)
 	if err != nil {
 		return true
 	}
@@ -389,7 +411,7 @@ func SingleInstance(key string) bool {
 }
 
 // SecondInstancePing 通知已存在的实例（广播 WM_NULL 唤醒主窗口消息循环），
-// 参数通过 %TEMP%/gogui-<key>.args 传递，首个实例用 PollSecondInstanceArgs 读取。
+// 参数通过 %TEMP%/guis-<key>.args 传递，首个实例用 PollSecondInstanceArgs 读取。
 func SecondInstancePing(key string) { SecondInstancePingArgs(key, nil) }
 
 // SecondInstancePingArgs 带参数通知首个实例。
@@ -403,7 +425,7 @@ func SecondInstancePingArgs(key string, args []string) {
 // secondArgsPath 二次启动参数临时文件路径。
 func secondArgsPath(key string) string {
 	dir := os.TempDir()
-	return filepath.Join(dir, "gogui-"+key+".args")
+	return filepath.Join(dir, "guis-"+key+".args")
 }
 
 func writeSecondArgs(key string, args []string) {

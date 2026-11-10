@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -21,7 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"gogui/internal/gpu"
+	"guis/internal/gpu"
 )
 
 // errBadDataURL data URL 格式不合法。
@@ -59,18 +59,26 @@ type imageMeta struct {
 }
 
 var (
-	imageMetaMu sync.Mutex
+	imageMetaMu sync.RWMutex
 	imageMetas  = map[string]imageMeta{}
 )
 
+// imageMetaMax 尺寸缓存条数上限：长列表/相册滚动时会遇到成千上万个路径，
+// 无上限的 map 会把每个路径字符串带进常驻内存（缓存本身比数据还大）。
+const imageMetaMax = 4096
+
 // ImageSize 返回图片像素尺寸（带缓存，失败返回 0,0）。
+//
+// 布局阶段每个图片节点每帧都会调一次：命中路径走读锁，
+// 且解码不再在全局锁内进行（旧实现在持锁时 DecodeConfig 会阻塞其它窗口）。
 func ImageSize(path string) (int, int) {
-	imageMetaMu.Lock()
-	defer imageMetaMu.Unlock()
-	if m, ok := imageMetas[path]; ok {
+	imageMetaMu.RLock()
+	m, ok := imageMetas[path]
+	imageMetaMu.RUnlock()
+	if ok {
 		return m.w, m.h
 	}
-	m := imageMeta{}
+	m = imageMeta{}
 	f, err := imageReader(path)
 	if err != nil {
 		m.err = err
@@ -83,7 +91,12 @@ func ImageSize(path string) (int, int) {
 			m.w, m.h = cfg.Width, cfg.Height
 		}
 	}
+	imageMetaMu.Lock()
+	if len(imageMetas) >= imageMetaMax {
+		imageMetas = map[string]imageMeta{}
+	}
 	imageMetas[path] = m
+	imageMetaMu.Unlock()
 	return m.w, m.h
 }
 
@@ -120,6 +133,8 @@ type texEntry struct {
 	stamp   int64 // 最近一次被绘制的帧号（LRU 回收用）
 	err     error
 	failed  bool
+	failSz  int64 // 失败时的文件大小 / 修改时间：文件变更后允许重试
+	failMod int64
 	started atomic.Bool
 	ready   atomic.Pointer[texUpload]
 }
@@ -134,7 +149,9 @@ type imageTextures struct {
 	waiting atomic.Int32
 }
 
-// imageTexBudget 单窗口图片纹理预算：超出后按「最近未使用」回收纹理。
+// imageTexBudget 旧固定预算（已改为按窗口面积自适应的 renderer.ImageTexBudget，
+// 这里保留常量供文档与旧调用点对照）。
+// 单窗口图片纹理预算：超出后按「最近未使用」回收纹理。
 // 旧实现只增不减，翻完几百张图的相册/长列表后显存与堆都不会回落。
 // 96MB 的预算对「一屏几张缩略图」的常规界面而言过于宽松，
 // 现在收紧到 32MB：缩略图约可同时驻留 20~40 张，超过后按 LRU 回收、
@@ -170,6 +187,7 @@ func (t *imageTextures) get(r *gpu.Renderer, a *App, path string) *gpu.Texture {
 	if up := e.ready.Swap(nil); up != nil {
 		if up.err != nil || up.img == nil {
 			e.err, e.failed = up.err, true
+			e.failSz, e.failMod = fileStamp(path)
 			return nil
 		}
 		b := up.img.Bounds()
@@ -184,10 +202,27 @@ func (t *imageTextures) get(r *gpu.Renderer, a *App, path string) *gpu.Texture {
 		return e.tex
 	}
 	if e.failed {
-		return nil
+		// 失败可能只是「当时文件还没写完」（例如皮肤背景图正在后台生成、
+		// 图片刚下载到磁盘）。文件大小 / 修改时间变了就允许重试一次，
+		// 否则该路径会永久失败，界面只剩纯色底，必须重启才恢复。
+		if sz, mod := fileStamp(path); sz != e.failSz || mod != e.failMod {
+			e.failed, e.err = false, nil
+			e.failSz, e.failMod = 0, 0
+		} else {
+			return nil
+		}
 	}
 	t.start(e, a, path)
 	return nil
+}
+
+// fileStamp 返回文件大小与修改时间（失败纹理的重试判断用；读不到返回 0,0）。
+func fileStamp(path string) (int64, int64) {
+	st, err := os.Stat(path)
+	if err != nil {
+		return 0, 0
+	}
+	return st.Size(), st.ModTime().UnixNano()
 }
 
 // evict 显存超预算时按最近未使用回收纹理。
@@ -195,7 +230,7 @@ func (t *imageTextures) get(r *gpu.Renderer, a *App, path string) *gpu.Texture {
 // 否则已经进批次但尚未提交的顶点会引用已删除的纹理。
 func (t *imageTextures) evict(r *gpu.Renderer, keep int64) {
 	t.mu.Lock()
-	if t.bytes <= imageTexBudget {
+	if t.bytes <= r.ImageTexBudget() {
 		t.mu.Unlock()
 		return
 	}
@@ -228,20 +263,48 @@ func (t *imageTextures) evict(r *gpu.Renderer, keep int64) {
 // frame() 看到 waiting>0 会持续请求重绘 —— 表现为滚过一批图片后窗口永久 100% CPU。
 func (t *imageTextures) beginFrame() { t.waiting.Store(0) }
 
-// releaseAll 释放全部图片纹理（空闲 / 最小化时调用），保留条目以便重新解码。
+// releaseAll 释放全部图片纹理（窗口不可见时调用），保留条目以便重新解码。
 // 条目里的 started 要复位，否则下次回到该页面时不会重新拉起解码。
 func (t *imageTextures) releaseAll(r *gpu.Renderer) {
+	t.releaseWhere(r, func(*texEntry) bool { return true })
+}
+
+// releaseIdle 浅空闲回收：只释放「最后一帧没画到」的图片纹理。
+//
+// 与 releaseAll 的差别很关键：上一帧确实画在屏幕上的图（皮肤壁纸、头像、
+// 缩略图）必须留下纹理。否则空闲 3 秒后用户刚一动鼠标，这些图就被当成
+// 「首次访问」重新丢进后台解码，解码完成前的那几帧没有纹理可画——整窗
+// 缺了壁纸，看起来就是闪一下。视口外（翻走的长列表、换页后的封面）的
+// 纹理没有保留价值，照常释放。
+//
+// keepStamp 传「最后一帧的帧号」（App.frameCount-1）：stamp 比它小的条目
+// 说明最后一帧没有画到。
+func (t *imageTextures) releaseIdle(r *gpu.Renderer, keepStamp int64) {
+	t.releaseWhere(r, func(e *texEntry) bool { return e.stamp < keepStamp })
+}
+
+// releaseWhere 释放满足条件的纹理（drop 返回 true 的条目）。
+func (t *imageTextures) releaseWhere(r *gpu.Renderer, drop func(*texEntry) bool) {
 	if t == nil {
 		return
 	}
 	t.mu.Lock()
 	victims := make([]*texEntry, 0, len(t.m))
 	for _, e := range t.m {
+		if !drop(e) {
+			continue
+		}
+		// 记账无论有没有纹理都要清（旧实现 releaseAll 直接把总字节置 0），
+		// 否则“有记账没纹理”的条目会让预算永久偏低。
+		t.bytes -= e.bytes
+		e.bytes = 0
 		if e.tex != nil {
 			victims = append(victims, e)
 		}
 	}
-	t.bytes = 0
+	if t.bytes < 0 {
+		t.bytes = 0
+	}
 	t.mu.Unlock()
 	for _, e := range victims {
 		if r != nil {

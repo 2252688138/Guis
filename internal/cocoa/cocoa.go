@@ -1,9 +1,9 @@
 //go:build darwin && !ios
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 // Package cocoa 在 Go 侧用 purego 驱动 AppKit：NSApplication + NSWindow +
 // 自定义 NSView 子类（事件回调）+ NSOpenGLContext。全程零 cgo。
@@ -21,7 +21,7 @@ import (
 
 	"github.com/ebitengine/purego"
 
-	"gogui/internal/objc"
+	"guis/internal/objc"
 )
 
 // AppKit 常量（NSOpenGL.h / NSWindow.h）。
@@ -72,6 +72,8 @@ type Event struct {
 	Char   rune
 	Width  float32
 	Height float32
+	// Paths 仅 EvDropFiles 使用：拖入的文件路径。
+	Paths []string
 }
 
 var (
@@ -232,6 +234,8 @@ func ensureViewClass() uintptr {
 	objc.AddMethod(cls, "rightMouseUp:", callbacks[1], "v@:@")
 
 	viewClass = cls
+	// 拖入（NSDraggingDestination）：注册类型 + 四个回调
+	addDropSupport(cls)
 	return cls
 }
 
@@ -293,6 +297,8 @@ func NewWindow(title string, w, h int) (*Window, error) {
 	view = objc.SendRect(view, "initWithFrame:", objc.NewRect(0, 0, float64(w), float64(h)))
 	objc.SendB(view, "setWantsBestResolutionOpenGLSurface:", true)
 	objc.Send1(win, "setContentView:", view)
+	// 注册拖入类型（必须在视图实例上调用，类上只是注册回调）
+	applyDropTypes(view)
 
 	// 像素格式：硬件加速 + 双缓冲 + 24 位色 + 8 位 alpha + OpenGL 3.2 Core
 	// （macOS 上的 OpenGL 最高 4.1，3.2 Core 与桌面端 3.3 的着色器语法兼容）

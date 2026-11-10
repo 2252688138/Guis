@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"gogui/internal/text"
+	"guis/internal/text"
 )
 
 // TestForEachLineMatchesSplit 逐行迭代必须与旧的 splitLines 完全等价

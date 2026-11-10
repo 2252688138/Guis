@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package text
 
@@ -94,6 +94,37 @@ func TestWithBoldPutsBoldFirst(t *testing.T) {
 		if len(plain) != 2 {
 			t.Fatalf("非粗体候选数量错误：%v", plain)
 		}
+	}
+}
+
+func TestWithBoldKeepsCJKBeforeLatinBold(t *testing.T) {
+	// 回归：Android 上粗体请求曾把 Roboto-Bold（只有拉丁字形）排到
+	// NotoSansCJK-Regular 前面，粗体中文全部命中不到字形 → 胶囊有宽度但没文字。
+	files := []string{
+		"/f/NotoSansCJK-Regular.ttc",
+		"/f/Roboto-Bold.ttf",
+		"/f/Roboto-Regular.ttf",
+	}
+	keywords := concat(append([]string{}, sansCJKKeywords...), []string{"NotoSans-Regular", "Roboto"})
+	got := withBold(files, true, keywords)
+	if len(got) == 0 {
+		t.Fatal("候选为空")
+	}
+	if filepath.Base(got[0]) != "NotoSansCJK-Regular.ttc" {
+		t.Fatalf("CJK 字体必须排在最前（否则粗体中文无字形），实际首项 = %s（全部：%v）", got[0], got)
+	}
+	// 拉丁组内仍应粗体优先
+	idxBold, idxRegular := -1, -1
+	for i, p := range got {
+		switch filepath.Base(p) {
+		case "Roboto-Bold.ttf":
+			idxBold = i
+		case "Roboto-Regular.ttf":
+			idxRegular = i
+		}
+	}
+	if idxBold < 0 || idxRegular < 0 || idxBold > idxRegular {
+		t.Fatalf("拉丁组内粗体未优先：Roboto-Bold@%d Roboto-Regular@%d（%v）", idxBold, idxRegular, got)
 	}
 }
 

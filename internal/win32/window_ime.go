@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
@@ -174,6 +174,17 @@ func (w *Window) Visible() bool { return IsWindowVisible(w.Hwnd) != 0 }
 
 // Close 请求关闭窗口（走 WM_CLOSE）。
 func (w *Window) Close() { PostMessageW(w.Hwnd, WM_CLOSE, 0, 0) }
+
+// BlockClose 在 EvClose 回调里放弃本次关闭：窗口只隐藏、不销毁。
+//
+// 配合 ui.App.SetOnClose 实现「关闭时最小化到托盘」：回调返回 false 时
+// ui 层调用这里，wndProc 收到 WM_CLOSE 后不再 DestroyWindow。
+func (w *Window) BlockClose() {
+	if w == nil {
+		return
+	}
+	w.vetoClose.Store(true)
+}
 
 // Focus 置前并激活。
 func (w *Window) Focus() {

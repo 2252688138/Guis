@@ -1,29 +1,34 @@
 //go:build android && cgo
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
-// Android 应用入口：编译成 libgogui.so 后由 NativeActivity 加载。
+// Android 应用入口：编译成 libguis.so 后由 NativeActivity 加载。
 //
 // 构建（Windows + NDK）：
 //
 //	$env:CC = "$env:ANDROID_NDK\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android21-clang.cmd"
 //	$env:CGO_ENABLED = "1"; $env:GOOS = "android"; $env:GOARCH = "arm64"
-//	go build -buildmode=c-shared -o app/src/main/jniLibs/arm64-v8a/libgogui.so ./mobile/android
+//	go build -buildmode=c-shared -o app/src/main/jniLibs/arm64-v8a/libguis.so ./mobile/android
 package main
 
 import (
-	"gogui/internal/android"
-	"gogui/ui"
+	"guis/internal/android"
+	"guis/ui"
 )
 
-func main() {
-	// 系统调 ANativeActivity_onCreate 之前，把「界面入口」交给桥接层。
+// init 里注册界面入口：NativeActivity 在 dlopen 之后立刻回调
+// ANativeActivity_onCreate，而在 -buildmode=c-shared 下 main() 的调度时机
+// 晚于该回调（实测 main 根本没跑到），放 main() 里会漏掉回调 → 全黑屏。
+func init() {
 	android.OnCreate = func() {
 		runApp()
 	}
+}
+
+func main() {
 	// main 必须常驻：真正的 UI 循环在 OnCreate 派生的 goroutine 里跑，
 	// 因为窗口要等 NativeActivity 回调交付之后才存在。
 	select {}
@@ -32,7 +37,7 @@ func main() {
 // runApp 启动 UI。与桌面端同一份业务代码，只换窗口后端。
 func runApp() {
 	_ = ui.Run(ui.Options{
-		Title:  "GoGUI",
+		Title:  "GUIS",
 		Width:  1080,
 		Height: 1920,
 	}, view)
@@ -42,7 +47,7 @@ func runApp() {
 func view() *ui.Node {
 	return ui.Column(
 		ui.Row(
-			ui.Text("GoGUI").St(ui.St().Text(22, 700, ui.ColText)),
+			ui.Text("GUIS").St(ui.St().Text(22, 700, ui.ColText)),
 			ui.Spacer(),
 			ui.Tag("Android", ui.ColPrimary),
 		).St(ui.St().PadXY(18, 16)),

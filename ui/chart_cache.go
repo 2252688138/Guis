@@ -1,15 +1,15 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
 	"math"
 
-	"gogui/internal/geom"
-	"gogui/internal/gpu"
+	"guis/internal/geom"
+	"guis/internal/gpu"
 )
 
 // 图表的纹理缓存与悬浮交互。
@@ -18,8 +18,9 @@ import (
 // 每个 App 维护自己的缓存列表（纹理归属各自 GL 上下文），
 // 总字节超过 chartTexBudget 时按最近使用（stamp）淘汰。
 
-// chartTexBudget 所有图表纹理的总预算（24MB，约够 10~14 张 600×300）。
-const chartTexBudget int64 = 24 << 20
+// chartTexBudget 旧固定预算（已改为按窗口面积自适应的 renderer.ChartTexBudget）。
+// 保留常量作为默认参考值：基准 12MB。
+const chartTexBudget int64 = 12 << 20
 
 // chartTexture 取得（必要时重建）图表的矢量层纹理。
 func (a *App) chartTexture(c *Chart, lg chartLayout) *gpu.Texture {
@@ -68,7 +69,11 @@ func (a *App) chartTexture(c *Chart, lg chartLayout) *gpu.Texture {
 
 // chartEvict 腾出至少 need 字节（按最近使用淘汰）。
 func (a *App) chartEvict(need int64) {
-	for a.chartBytes+need > chartTexBudget && len(a.chartList) > 0 {
+	budget := chartTexBudget
+	if a != nil && a.r != nil {
+		budget = a.r.ChartTexBudget()
+	}
+	for a.chartBytes+need > budget && len(a.chartList) > 0 {
 		victim := 0
 		for i := 1; i < len(a.chartList); i++ {
 			if a.chartList[i].stamp < a.chartList[victim].stamp {
@@ -87,7 +92,7 @@ func (a *App) chartEvict(need int64) {
 
 // chartReleaseAll 释放全部图表纹理，下次绘制按需重建。
 //
-// 空闲 / 最小化时调用：图表页一次会同时驻留 7 张高分辨率纹理
+// 窗口不可见（最小化 / 收进托盘）时调用：图表页一次会同时驻留 7 张高分辨率纹理
 // （按 superSample 倍率的平方增长，2× 时单张 600×300 就是 ~2.9MB），
 // 页面切走或窗口闲置时这些纹理没有保留价值。
 func (a *App) chartReleaseAll() {
@@ -102,6 +107,34 @@ func (a *App) chartReleaseAll() {
 	}
 	a.chartList = a.chartList[:0]
 	a.chartBytes = 0
+}
+
+// chartReleaseIdle 浅空闲回收：只释放「上一帧没画到」的图表纹理。
+//
+// 与 chartReleaseAll 的差别：可见图表的纹理必须留着。释放后唤醒的第一帧
+// 要同步重跑 rasterPlot（一张图几十毫秒），重建前那块区域是空的，
+// 用户刚一动鼠标就会看到图表闪一下。
+//
+// 用 chartFrameBase（上一帧开始时的图号）判断：stamp 小于它的说明
+// 那一帧没有画到（切走的页面 / 滚出视口的图表）。
+func (a *App) chartReleaseIdle() {
+	if a == nil || a.r == nil {
+		return
+	}
+	live := a.chartList[:0]
+	for _, c := range a.chartList {
+		if c.tex != nil && c.stamp < a.chartFrameBase {
+			a.r.DeleteTexture(c.tex)
+			a.chartBytes -= c.bytes
+			c.tex, c.key, c.bytes, c.w, c.h = nil, 0, 0, 0, 0
+			continue
+		}
+		live = append(live, c)
+	}
+	for i := len(live); i < len(a.chartList); i++ {
+		a.chartList[i] = nil
+	}
+	a.chartList = live
 }
 
 // chartResetCache 关闭窗口时清空缓存记账（GL 资源由 Renderer.Destroy 统一释放）。

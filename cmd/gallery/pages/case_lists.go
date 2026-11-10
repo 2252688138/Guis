@@ -1,4 +1,4 @@
-// Go-gui — gallery 页面拆分：列表与表格（页内分页：列表组件 / 表格示例）
+// guis — gallery 页面拆分：列表与表格（页内分页：列表组件 / 表格示例）
 // 列表页签演示文件树 / 图文卡片 / 列表 / 社区帖子 / 分页器，表格页签沿用数据表格等既有示例。
 
 package pages
@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"gogui/ui"
+	"guis/ui"
 )
 
 // ---- 页面状态 ----
@@ -73,8 +73,8 @@ func tablePage() *ui.Node {
 func treeSection() *ui.Node {
 	tree := ui.FileTree(galleryTree, ui.TreeOptions{
 		Key:      "gal-tree",
-		Expanded: []string{"gogui", "gogui/cmd", "gogui/cmd/gallery", "gogui/ui"},
-		Selected: "gogui/ui/layout.go",
+		Expanded: []string{"guis", "guis/cmd", "guis/cmd/gallery", "guis/ui"},
+		Selected: "guis/ui/layout.go",
 		OnPick: func(n ui.TreeNode) {
 			treeTip = n.Key
 			ui.RequestRedraw()
@@ -82,7 +82,7 @@ func treeSection() *ui.Node {
 	})
 	sel := ui.TreeSelected("gal-tree")
 	if sel == "" {
-		sel = "gogui/ui/layout.go"
+		sel = "guis/ui/layout.go"
 	}
 	kind := "文件"
 	if n := treeFind(galleryTree, sel); n != nil && n.Kind == ui.TreeFolder {
@@ -249,33 +249,33 @@ func postSection() *ui.Node {
 
 // galleryTree 文件树示例（结构与仓库一致）。
 var galleryTree = []ui.TreeNode{
-	{Key: "gogui", Label: "gogui", Kind: ui.TreeFolder, Children: []ui.TreeNode{
-		{Key: "gogui/.git", Label: ".git", Kind: ui.TreeFolder},
-		{Key: "gogui/.workflow", Label: ".workflow", Kind: ui.TreeFolder},
-		{Key: "gogui/.zym", Label: ".zym", Kind: ui.TreeFolder},
-		{Key: "gogui/bin", Label: "bin", Kind: ui.TreeFolder},
-		{Key: "gogui/cmd", Label: "cmd", Kind: ui.TreeFolder, Tag: "3", Children: []ui.TreeNode{
-			{Key: "gogui/cmd/gallery", Label: "gallery", Kind: ui.TreeFolder, Children: []ui.TreeNode{
-				{Key: "gogui/cmd/gallery/pages", Label: "pages", Kind: ui.TreeFolder, Tag: "新增", TagColor: ui.ColSuccess},
-				{Key: "gogui/cmd/gallery/gallery.exe", Label: "gallery.exe", Kind: ui.TreeFile},
-				{Key: "gogui/cmd/gallery/main.go", Label: "main.go", Kind: ui.TreeFile},
-				{Key: "gogui/cmd/gallery/rsrc_windows_amd64.syso", Label: "rsrc_windows_amd64.syso", Kind: ui.TreeFile},
+	{Key: "guis", Label: "guis", Kind: ui.TreeFolder, Children: []ui.TreeNode{
+		{Key: "guis/.git", Label: ".git", Kind: ui.TreeFolder},
+		{Key: "guis/.workflow", Label: ".workflow", Kind: ui.TreeFolder},
+		{Key: "guis/.zym", Label: ".zym", Kind: ui.TreeFolder},
+		{Key: "guis/bin", Label: "bin", Kind: ui.TreeFolder},
+		{Key: "guis/cmd", Label: "cmd", Kind: ui.TreeFolder, Tag: "3", Children: []ui.TreeNode{
+			{Key: "guis/cmd/gallery", Label: "gallery", Kind: ui.TreeFolder, Children: []ui.TreeNode{
+				{Key: "guis/cmd/gallery/pages", Label: "pages", Kind: ui.TreeFolder, Tag: "新增", TagColor: ui.ColSuccess},
+				{Key: "guis/cmd/gallery/gallery.exe", Label: "gallery.exe", Kind: ui.TreeFile},
+				{Key: "guis/cmd/gallery/main.go", Label: "main.go", Kind: ui.TreeFile},
+				{Key: "guis/cmd/gallery/rsrc_windows_amd64.syso", Label: "rsrc_windows_amd64.syso", Kind: ui.TreeFile},
 			}},
 		}},
-		{Key: "gogui/dist", Label: "dist", Kind: ui.TreeFolder},
-		{Key: "gogui/installer", Label: "installer", Kind: ui.TreeFolder},
-		{Key: "gogui/internal", Label: "internal", Kind: ui.TreeFolder},
-		{Key: "gogui/ui", Label: "ui", Kind: ui.TreeFolder, Tag: "72", Children: []ui.TreeNode{
-			{Key: "gogui/ui/layout.go", Label: "layout.go", Kind: ui.TreeFile, Tag: "M", TagColor: ui.ColWarn},
-			{Key: "gogui/ui/tree.go", Label: "tree.go", Kind: ui.TreeFile, Tag: "新增", TagColor: ui.ColSuccess},
-			{Key: "gogui/ui/cards.go", Label: "cards.go", Kind: ui.TreeFile, Tag: "新增", TagColor: ui.ColSuccess},
-			{Key: "gogui/ui/pager.go", Label: "pager.go", Kind: ui.TreeFile, Tag: "新增", TagColor: ui.ColSuccess},
-			{Key: "gogui/ui/widgets.go", Label: "widgets.go", Kind: ui.TreeFile},
-			{Key: "gogui/ui/assets", Label: "assets", Kind: ui.TreeFolder},
+		{Key: "guis/dist", Label: "dist", Kind: ui.TreeFolder},
+		{Key: "guis/installer", Label: "installer", Kind: ui.TreeFolder},
+		{Key: "guis/internal", Label: "internal", Kind: ui.TreeFolder},
+		{Key: "guis/ui", Label: "ui", Kind: ui.TreeFolder, Tag: "72", Children: []ui.TreeNode{
+			{Key: "guis/ui/layout.go", Label: "layout.go", Kind: ui.TreeFile, Tag: "M", TagColor: ui.ColWarn},
+			{Key: "guis/ui/tree.go", Label: "tree.go", Kind: ui.TreeFile, Tag: "新增", TagColor: ui.ColSuccess},
+			{Key: "guis/ui/cards.go", Label: "cards.go", Kind: ui.TreeFile, Tag: "新增", TagColor: ui.ColSuccess},
+			{Key: "guis/ui/pager.go", Label: "pager.go", Kind: ui.TreeFile, Tag: "新增", TagColor: ui.ColSuccess},
+			{Key: "guis/ui/widgets.go", Label: "widgets.go", Kind: ui.TreeFile},
+			{Key: "guis/ui/assets", Label: "assets", Kind: ui.TreeFolder},
 		}},
-		{Key: "gogui/tools", Label: "tools", Kind: ui.TreeFolder},
-		{Key: "gogui/go.mod", Label: "go.mod", Kind: ui.TreeFile},
-		{Key: "gogui/README.md", Label: "README.md", Kind: ui.TreeLink, Tag: "链接"},
+		{Key: "guis/tools", Label: "tools", Kind: ui.TreeFolder},
+		{Key: "guis/go.mod", Label: "go.mod", Kind: ui.TreeFile},
+		{Key: "guis/README.md", Label: "README.md", Kind: ui.TreeLink, Tag: "链接"},
 	}},
 }
 
@@ -298,7 +298,7 @@ func galleryMedia() []ui.MediaItem {
 			Badge: "文档", Score: "9.0", Tags: []string{"文档", "富文本"}, Action: "设为壁纸", Accent: "#f472b6"},
 		{Key: "m8", Cover: assetCover("webview组件.png"), Title: "WebView 浏览器", Sub: "内嵌网页子窗口",
 			Badge: "文档", Score: "8.6", Tags: []string{"系统", "网页"}, Action: "设为壁纸", Accent: "#818cf8"},
-		{Key: "m9", Cover: assetCover("系统操作.png"), Title: "系统操作", Sub: "拖入 · 剪贴板 · 热键",
+		{Key: "m9", Cover: assetCover("系统操作.png"), Title: "系统操作", Sub: "拖入拖出 · 图标 · 任务栏 · 窗口特效 · 会话",
 			Badge: "界面", Score: "7.8", Tags: []string{"系统"}, Action: "设为壁纸", Accent: "#f87171"},
 		{Key: "m10", Cover: assetCover("浅色主题.png"), Title: "浅色主题", Sub: "语义 token 运行时切换",
 			Badge: "界面", Score: "8.0", Tags: []string{"主题"}, Action: "设为壁纸", Accent: "#0ea5e9"},

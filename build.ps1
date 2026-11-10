@@ -1,13 +1,13 @@
-﻿<#
+<#
 .SYNOPSIS
-GoGUI 构建脚本：版本号注入 + 体积优化构建 + Windows 资源生成 + NSIS 安装器打包。
+GUIS 构建脚本：版本号注入 + 体积优化构建 + Windows 资源生成 + NSIS 安装器打包。
 
 .DESCRIPTION
 版本号管理
   仓库根目录的 VERSION.txt 是唯一来源（语义化版本 x.y.z）。
   脚本读取后做三件事：
     1. 生成 cmd/gallery/rsrc_windows_*.syso（图标 + 文件属性版本，见 tools/winres）
-    2. 通过 -ldflags -X 注入 gogui/internal/version.*（运行时 version.String() / version.Full()）
+    2. 通过 -ldflags -X 注入 guis/internal/version.*（运行时 version.String() / version.Full()）
     3. 传给 NSIS 作为安装器版本与「应用和功能」里的显示版本
   改版本：编辑 VERSION.txt，或用 -Bump patch|minor|major 自动递增。
 
@@ -24,7 +24,7 @@ GoGUI 构建脚本：版本号注入 + 体积优化构建 + Windows 资源生成
 
 .EXAMPLE
 ./build.ps1                          # 发布构建 gallery -> dist\gallery.exe
-./build.ps1 -Installer               # 构建 + 打 NSIS 安装器 -> dist\GoGUI-0.1.0-setup.exe
+./build.ps1 -Installer               # 构建 + 打 NSIS 安装器 -> dist\GUIS-0.1.0-setup.exe
 ./build.ps1 -Installer -Upx          # 再叠加 UPX -9（体积最小）
 ./build.ps1 -Bump patch -Installer   # 版本号 +1 后打包（0.1.0 -> 0.1.1）
 ./build.ps1 -Channel release -Installer   # 正式通道构建（exe 属性不带 DEBUG 标记）
@@ -50,9 +50,9 @@ param(
     # ---- Windows 资源与安装器 ----
     [switch]$NoRes,
     [switch]$Installer,
-    [string]$ProductName = 'GoGUI',
-    [string]$Company = 'Go-gui',
-    [string]$Description = 'GoGUI 纯 Go 自绘 GUI 框架',
+    [string]$ProductName = 'GUIS',
+    [string]$Company = 'guis',
+    [string]$Description = 'GUIS 纯 Go 自绘 GUI 框架',
     [string]$Copyright = 'Copyright (c) 2026 Mr.Shu',
     [string]$AppExe = 'gallery.exe',
     # 图标：exe 资源与安装器共用
@@ -184,14 +184,14 @@ if ($needRes) {
 }
 
 # ================= 构建 =================
-# 运行时版本信息（gogui/internal/version.*）通过链接期变量注入
+# 运行时版本信息（guis/internal/version.*）通过链接期变量注入
 $versionLd = @(
-    "-X gogui/internal/version.Number=$Version",
-    "-X gogui/internal/version.Commit=$Commit",
-    "-X gogui/internal/version.BuildTime=$BuildTime",
-    "-X gogui/internal/version.Channel=$Channel",
-    "-X gogui/internal/version.Product=$ProductName",
-    "-X gogui/internal/version.Company=$Company"
+    "-X guis/internal/version.Number=$Version",
+    "-X guis/internal/version.Commit=$Commit",
+    "-X guis/internal/version.BuildTime=$BuildTime",
+    "-X guis/internal/version.Channel=$Channel",
+    "-X guis/internal/version.Product=$ProductName",
+    "-X guis/internal/version.Company=$Company"
 ) -join ' '
 
 if ($Dev) {
@@ -283,7 +283,7 @@ if ($Installer) {
 
     $setupName = '{0}-{1}-setup.exe' -f $ProductName, $Version
     $setupPath = Join-Path (Resolve-Path $OutDir) $setupName
-    $nsiPath = Join-Path $PSScriptRoot 'installer\gogui.nsi'
+    $nsiPath = Join-Path $PSScriptRoot 'installer\guis.nsi'
 
     Write-Host ("[nsis] {0}  ->  {1}" -f $nsiPath, $setupPath) -ForegroundColor Cyan
     $nsisArgs = @(

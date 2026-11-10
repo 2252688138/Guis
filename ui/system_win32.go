@@ -1,13 +1,13 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
-import "gogui/internal/win32"
+import "guis/internal/win32"
 
 // Windows 端的系统能力实现（system.go 里是与平台无关的组件部分）。
 

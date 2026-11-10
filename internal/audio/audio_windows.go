@@ -1,13 +1,13 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package audio
 
-import "gogui/internal/win32"
+import "guis/internal/win32"
 
 // Open 打开默认波形输出设备（WinMM waveOut）。
 // rate 采样率，ch 声道数，buffers 缓冲块数，framesPerBuffer 每块帧数。

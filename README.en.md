@@ -1,4 +1,4 @@
-# GoGUI
+# GUIS
 
 A pure-Go, **zero-cgo** declarative GUI toolkit that draws its whole interface with OpenGL — no WebView needed for the UI itself (an optional embedded WebView2 component is available). The visual language follows modern web UI: dark surfaces, rounded corners, gradients, shadows, flex layout, and a fully customizable style DSL.
 
@@ -63,6 +63,9 @@ Recent work focused on list / content pages and a batch of interaction details:
 | Scrolling | The first wheel event now creates the offset entry, fixing “scrollbar shows but the wheel does nothing until you drag it” |
 | Layout | Percentage sizes only resolve when the parent axis is definite; use `Grow(1)` to fill — `Hp(100)` resolves to 0 on an unbounded main axis (the WebView2 blank-page root cause) |
 | Windows | The gallery now allows **multiple instances**: every launch gets its own window and page state (`ui.SingleInstance` is still available as a library feature) |
+| Rendering | Glyph runs are cached per string (`text.Font.GlyphsFor`), so text drawing no longer locks and hashes once per character — 300 Chinese lines went from 362µs to 10µs; shape/text vertices are written in one grow-and-fill step; GL program / VAO / texture / viewport uniforms are cached, so batch switches stop issuing redundant driver calls; `paintText` no longer allocates a closure per text node per frame |
+| Memory | Idle trimming now shrinks the vertex scratch buffers back to their initial capacity (after a 100k-row table they grow to ~7MB); the image size cache is capped at 4096 entries; the glyph-run cache is capped by both entry count and total glyph count |
+| Widget cache | New `Style.CacheOn()` / `ui.CachedLayer(key, bg, child)`: a subtree whose content is stable is snapshotted into a texture after its first paint, then re-blitted as a single image — no vertex building, no glyph lookups. Opt in per heavy panel (long document blocks, info cards); it silently falls back to normal painting when the node has a border / shadow / interactive child / animation / image, and `GUIS_FPS=1` reports `layer=hits/misses` |
 
 ## Why it looks like the web without a browser
 
@@ -82,7 +85,7 @@ Recent work focused on list / content pages and a batch of interaction details:
 ```go
 package main
 
-import "gogui/ui"
+import "guis/ui"
 
 func main() {
     ui.Run(ui.Options{
@@ -163,15 +166,15 @@ One build injects the version into three places:
 
 | Where | How | Read it |
 | --- | --- | --- |
-| Runtime | `-ldflags -X gogui/internal/version.Number=...` | `version.String()` / `version.Full()` |
+| Runtime | `-ldflags -X guis/internal/version.Number=...` | `version.String()` / `version.Full()` |
 | exe file properties | `tools/winres` generates `cmd/gallery/rsrc_windows_*.syso` | right-click → Properties → Details |
 | Installer | `makensis /DVERSION=... /DVI_VERSION=...` | "Apps & features" entry and setup file name |
 
 ```go
-import "gogui/internal/version"
+import "guis/internal/version"
 
 version.String()   // v0.1.0
-version.Title()    // GoGUI v0.1.0 (used as the gallery window title)
+version.Title()    // GUIS v0.1.0 (used as the gallery window title)
 version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 ```
 
@@ -180,7 +183,7 @@ version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 ## Installer (NSIS 3)
 
 ```powershell
-./build.ps1 -Installer                   # -> dist\GoGUI-0.1.0-setup.exe
+./build.ps1 -Installer                   # -> dist\GUIS-0.1.0-setup.exe
 ./build.ps1 -Installer -Upx              # UPX the exe first, then package
 ./build.ps1 -Installer -Channel release  # release channel
 ./build.ps1 -Bump patch -Installer       # bump version, then package
@@ -192,8 +195,8 @@ Requires NSIS 3 (`makensis.exe`). It is auto-detected in `C:\Program Files (x86)
 
 | Option | Install dir | Registry | Privileges |
 | --- | --- | --- | --- |
-| Just me (default) | `%LOCALAPPDATA%\Programs\GoGUI` | HKCU | none |
-| All users | `%ProgramFiles%\GoGUI` | HKLM | relaunches itself elevated (UAC) |
+| Just me (default) | `%LOCALAPPDATA%\Programs\GUIS` | HKCU | none |
+| All users | `%ProgramFiles%\GUIS` | HKLM | relaunches itself elevated (UAC) |
 
 - An elevated process defaults to "all users", a plain double-click to "just me";
 - the directory page accepts any custom path and **it is kept as-is**: switching scope only moves between the two default directories and never overwrites a hand-picked path; each scope remembers its own last directory.
@@ -202,11 +205,11 @@ Requires NSIS 3 (`makensis.exe`). It is auto-detected in `C:\Program Files (x86)
 
 ```powershell
 # install (/D must be the last argument, path must not be quoted)
-GoGUI-0.1.0-setup.exe /S /currentuser /D=D:\Apps\GoGUI
-GoGUI-0.1.0-setup.exe /S /allusers              # requires elevation, exit code 5 otherwise
+GUIS-0.1.0-setup.exe /S /currentuser /D=D:\Apps\GUIS
+GUIS-0.1.0-setup.exe /S /allusers              # requires elevation, exit code 5 otherwise
 
 # uninstall
-"%LOCALAPPDATA%\Programs\GoGUI\uninstall.exe" /S
+"%LOCALAPPDATA%\Programs\GUIS\uninstall.exe" /S
 ```
 
 `/currentuser` and `/allusers` skip the scope page, which is handy for scripts and CI.
@@ -216,10 +219,10 @@ GoGUI-0.1.0-setup.exe /S /allusers              # requires elevation, exit code 
 | Location | Content |
 | --- | --- |
 | `$INSTDIR` | `gallery.exe`, `uninstall.exe` |
-| Start menu | `GoGUI` shortcut + uninstall entry |
-| Desktop | `GoGUI` shortcut |
-| Registry | `…\Uninstall\GoGUI`: DisplayName / DisplayVersion / DisplayIcon / Publisher / InstallLocation / EstimatedSize / NoModify / NoRepair |
-| Registry | `Software\GoGUI`: InstallDir / Version / Channel / Scope |
+| Start menu | `GUIS` shortcut + uninstall entry |
+| Desktop | `GUIS` shortcut |
+| Registry | `…\Uninstall\GUIS`: DisplayName / DisplayVersion / DisplayIcon / Publisher / InstallLocation / EstimatedSize / NoModify / NoRepair |
+| Registry | `Software\GUIS`: InstallDir / Version / Channel / Scope |
 
 - Setup file name, exe properties and `DisplayVersion` all come from `VERSION.txt` — nothing to sync by hand;
 - upgrading means running the newer installer over the same scope and directory; old files are replaced and the registered version is updated;
@@ -227,7 +230,7 @@ GoGUI-0.1.0-setup.exe /S /allusers              # requires elevation, exit code 
 
 ### Pitfalls when editing the script
 
-- `installer/gogui.nsi` contains Chinese text and **must be saved as UTF-8 with BOM**, otherwise makensis fails with `Bad text encoding`;
+- `installer/guis.nsi` contains Chinese text and **must be saved as UTF-8 with BOM**, otherwise makensis fails with `Bad text encoding`;
 - never assign `$INSTDIR` inside the install `Section` — it would override the path picked on the directory page; switching scope only calls `SetScope`;
 - do not use `InstallDirRegKey`: it stuffs the old directory into `$INSTDIR` before `.onInit`, so an "all users" install would silently reuse the per-user path;
 - an exe can only contain one `.rsrc` section, so icons and version info must come from the same `tools/winres` output.
@@ -264,10 +267,42 @@ Beyond primitives (`Box/Row/Column/Center/Spacer/Text/Button/Scroll/Stack`), `ui
 | Switches | `Switch` plus `SwitchEx` with `SwitchDefault` / `SwitchSparkle` / `SwitchLabeled` / `SwitchGradient` / `SwitchSized` / `SwitchDisabled` presets and custom icon / label builders |
 | Media | `Video`, `VideoPlayer`, `Player`, `VideoClip`, `MediaSource` (ffmpeg), `MusicPlayer` |
 | Browser | `WebView` (system WebView2) + `WebViewNode` / `WebViewBar` / `WebViewStatus` |
+| Desktop / OS | `KnownFolder` / `SubFolder` / `EnsureFolder`, `WatchDir` / `WatchFile`, `MessageBox`, `SystemInfo` / `PowerState`, `LockScreen` / `Suspend` / `Shutdown`, `SystemVolume`, `FileIcon` / `FileThumbnail`, `DragFiles` (OLE drag-out), `ClipboardHTML` / `ClipboardRTF`, `SendText` / `SendKey`, `CreateShortcut` / `SetFileAssociation`, `App.SetTaskbarProgress` / `SetBadge` / `Flash`, `App.SetOpacity` / `SetClickThrough` / `SetSkipTaskbar` / `SetBackdrop` / `SetMinSize` — every one gated by a `Cap*` bit and a safe no-op elsewhere |
 | Overlays | `ModalPanel` / `AlertDlg` / `ConfirmDlg` / `PromptDlg` / `Drawer`, `MenuPanel`, `TooltipOf` + `TooltipLayer`, `Toast`, `Banner` |
 | Markdown | `Markdown` with theme-aware syntax highlighting |
+| i18n | `T` / `Tf` / `Ts` / `Tn` (CLDR plurals), `UseLocale` / `AutoLocale` / `SetLocale`, `LocaleNumber` / `LocalePercent` / `LocaleCurrency` / `LocaleDate` / `LocaleTime` / `LocaleRelative` / `LocaleDuration` / `LocaleList` / `LocaleBytes`, `LocaleSwitcher` / `LocaleSegmented`, `LoadCatalog` / `RegisterLocale` — built-in zh-CN / en-US packs embedded via `go:embed`, system locale detected per platform (Win32 UI language, `LANG`, `AppleLocale`, `navigator.languages`, injectable on mobile), automatic RTL layout mirroring |
 
 Engine capabilities behind them: `Stack` layering, absolute positioning (`AbsFill/AbsTL/AbsTR/AbsBL/AbsBR/AbsCenter/AbsBottom`), focus & keyboard (`FocusOn`, `OnCharEvt/OnKeyEvt`, `ui.SetFocus`), per-frame animation (`AnimOn` + `ui.AnimTime()`, `Tween`/`Spring`/`Keyframes`), coordinate-aware taps (`TapAt`), dragging (`DragEvt`), hover dedup (`OnHoverEvt`), `DisabledOn`, built-in scrollbars, text measuring (`ui.TextWidth`), tooltips (`ui.SetTooltip`).
+
+## Official site (cmd/guis-site)
+
+`cmd/guis-site` is the GUIS landing page: dark gradient with glow blobs, floating nav, platform/feature cards, and live component demos (switch / slider / rating / chart / icons / color tokens). The same code builds a desktop exe and a Web (WASM) bundle.
+
+```bash
+go run ./cmd/guis-site          # desktop preview
+pwsh ./build-site.ps1           # build into dist/site and serve http://127.0.0.1:8099/
+```
+
+Layout rules for the site (hard-won):
+
+- keep every block inside `container()` (max 1180, 92% on narrow screens), footer included;
+- size cards with `colW(cols, gap)` computed from the container width - never hard-code pixels, or narrow screens overflow;
+- set width/height on the `ui.ChartView` node itself; wrapping it in a `ui.Box` does not constrain the chart node and it bleeds out of the card;
+- do not put `Clipped()` on the page root: root-level clipping goes through the layer path and stops painting content once scrolled mid-page;
+- for a long scrolling page prefer `ui.SetCacheLayers(false)` - auto layer caching is a net loss while scrolling.
+
+### Theme switch and built-in API docs
+
+- The pill on the right of the top bar cycles **dark / light / follow system**. Site colours live in `theme.go` (runtime palette variables); framework widgets (Markdown, buttons) follow `ui.UseTheme`, so both layers switch together.
+- "API Docs" in the top bar opens the in-site manual: grouped table of contents on the left, native Markdown rendering of `docs/api/*.md` on the right. The Markdown is embedded via `guis/docs` (`go:embed`), so the binary ships with the full manual and works offline.
+- Debug entry points: `?page=api&theme=light` (browser), `GUIS_SITE_PAGE=api` + `GUIS_SITE_THEME=light` (desktop).
+
+```bash
+pwsh ./build-linux.ps1                # cross-compile dist/guis-site-linux-amd64 (single static file)
+pwsh ./build-linux.ps1 -Arch arm64    # other architectures
+```
+
+The result is a `CGO_ENABLED=0` static ELF: no glibc version dependency, just `chmod +x` on CentOS 7/8/9. It needs an X11 session; on a bare server install `wqy-zenhei-fonts` for CJK glyphs.
 
 ## Layout
 
@@ -314,7 +349,7 @@ Themes: `ui.UseTheme(ui.ThemeDark | ui.ThemeLight | ui.ThemeSystem)` — every t
 ## Project layout
 
 ```
-gogui/
+guis/
 ├── ui/             tree, style, layout, events, theme, widgets, dialogs, media
 │   ├── app.go      window, event loop, painting
 │   ├── layout.go   measure + arrange, font cache
@@ -338,7 +373,7 @@ go run ./tools/fonttest        # print glyph metrics
 go run ./tools/atlasdump       # ASCII-dump the glyph atlas
 ```
 
-Set `ui.Options.DumpLayout = "layout.txt"` to export the first frame's layout tree and exit. `GOGUI_MEMSTATS=1` prints heap/atlas/image statistics every 120 frames; `GOGUI_TEXT_GAMMA` overrides the glyph coverage gamma.
+Set `ui.Options.DumpLayout = "layout.txt"` to export the first frame's layout tree and exit. `GUIS_MEMSTATS=1` prints heap/atlas/image statistics every 120 frames; `GUIS_TEXT_GAMMA` overrides the glyph coverage gamma.
 
 ## Performance notes
 
@@ -354,7 +389,7 @@ Set `ui.Options.DumpLayout = "layout.txt"` to export the first frame's layout tr
 - No rich text (inline mixing, image wrapping) or vertical text yet
 - Image nodes stretch to their target box (no cover cropping); use same-ratio art or a gradient placeholder for covers
 - Video decoding relies on external `ffmpeg` / `ffprobe` (subprocess; high-res software decode is CPU heavy)
-- The embedded WebView is HWND-hosted in default mode (A), so web pixels cannot be covered by menus; the experimental DirectComposition mode (B, `GOGUI_COMPOSE=1`) composites them in the same tree
+- The embedded WebView is HWND-hosted in default mode (A), so web pixels cannot be covered by menus; the experimental DirectComposition mode (B, `GUIS_COMPOSE=1`) composites them in the same tree
 
 ## Platform roadmap
 

@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 // Package display 原生窗口层：把「创建窗口 / 消息泵 / GL 上下文 / 事件翻译」的平台差异
 // 收敛成一份契约，上层的 ui.Backend 只做展示层适配，ui/app.go 则完全平台无关。

@@ -1,9 +1,9 @@
 //go:build js && wasm
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"syscall/js"
 
-	"gogui/internal/geom"
+	"guis/internal/geom"
 )
 
 // 浏览器端「DOM 叠加层」：把 <video> / <iframe> 这类原生元素按 UI 逻辑矩形
@@ -49,7 +49,7 @@ func overlayRoot() js.Value {
 	}
 	doc := js.Global().Get("document")
 	root := doc.Call("createElement", "div")
-	root.Set("id", "gogui-overlay")
+	root.Set("id", "guis-overlay")
 	st := root.Get("style")
 	st.Set("position", "fixed")
 	st.Set("left", "0")
@@ -115,8 +115,11 @@ func placeOverlay(id string, r geom.Rect, clip geom.Rect, apply func(el js.Value
 	overlayPlaces = append(overlayPlaces, overlayPlacement{ID: id, Rect: r, Clip: clip, Apply: apply})
 }
 
-// currentClip 取当前绘制裁剪栈与给定矩形的交集（无裁剪时返回零矩形）。
-func (a *App) currentClip(r geom.Rect) geom.Rect {
+// clipRect 取当前绘制裁剪栈与给定矩形的交集（无裁剪时返回零矩形）。
+//
+// 命名带 clipRect 而不是 currentClip：后者在 layers.go 里已用于「栅格缓存
+// 的当前裁剪区」，同名不同签名在 wasm 构建下会直接编译失败。
+func (a *App) clipRect(r geom.Rect) geom.Rect {
 	n := a.clipN
 	if n > len(a.clipStack) {
 		n = len(a.clipStack)

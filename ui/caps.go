@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -58,10 +58,38 @@ const (
 	CapSingleInstance
 	// CapModernNotify 应用内通知中心（按钮/进度）。
 	CapModernNotify
+	// CapAutoStart 开机自启（当前用户级注册）。
+	CapAutoStart
+	// CapFileWatch 文件 / 目录变更监听（WatchDir / WatchFile）。
+	CapFileWatch
+	// CapKnownFolders 系统标准目录（桌面 / 下载 / 文档 / 图片 / 音乐 / 视频 / 临时）。
+	CapKnownFolders
+	// CapDragOut 把文件拖出到其它应用（资源管理器 / 聊天窗口）。
+	CapDragOut
+	// CapFileIcon 文件类型图标与缩略图。
+	CapFileIcon
+	// CapNativeDialog 原生消息框（崩溃兜底 / 无 GL 上下文时仍然可用）。
+	CapNativeDialog
+	// CapSystemInfo 系统信息（UI 语言 / 用户名 / 主机名 / OS 版本 / 提权）。
+	CapSystemInfo
+	// CapTaskbar 任务栏集成（进度 / 角标 / 闪烁 / 缩略图工具栏）。
+	CapTaskbar
+	// CapWindowFX 窗口特效（透明度 / 鼠标穿透 / 置底 / 深色标题栏 / 材质 / 防截屏）。
+	CapWindowFX
+	// CapClipboardRich 富文本剪贴板（HTML / RTF）。
+	CapClipboardRich
+	// CapPowerStatus 电源与电池状态。
+	CapPowerStatus
+	// CapSession 会话控制（锁屏 / 注销 / 关机 / 重启 / 休眠）。
+	CapSession
+	// CapInputSim 键鼠模拟输入（SendInput）。
+	CapInputSim
+	// CapShellLink 创建快捷方式与文件关联。
+	CapShellLink
 )
 
 // CapLast 最后一个能力值（遍历 / 测试用；新增能力时同步更新）。
-const CapLast = CapModernNotify
+const CapLast = CapShellLink
 
 // capNames 能力名称（调试与界面展示用）。
 var capNames = map[Cap]string{
@@ -84,6 +112,20 @@ var capNames = map[Cap]string{
 	CapMultiMonitor:   "多显示器",
 	CapSingleInstance: "单实例锁",
 	CapModernNotify:   "通知中心",
+	CapAutoStart:      "开机自启",
+	CapFileWatch:      "文件监听",
+	CapKnownFolders:   "标准目录",
+	CapDragOut:        "文件拖出",
+	CapFileIcon:       "文件图标",
+	CapNativeDialog:   "原生对话框",
+	CapSystemInfo:     "系统信息",
+	CapTaskbar:        "任务栏集成",
+	CapWindowFX:       "窗口特效",
+	CapClipboardRich:  "富文本剪贴板",
+	CapPowerStatus:    "电源状态",
+	CapSession:        "会话控制",
+	CapInputSim:       "输入模拟",
+	CapShellLink:      "快捷方式",
 }
 
 // CapName 返回能力的中文名称。

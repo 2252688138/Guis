@@ -1,9 +1,24 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package gpu
+
+import "strings"
+
+// glslES3 把桌面版 GLSL 330 core 着色器翻译成 GLSL ES 3.00（Android / WebGL 2）。
+//
+// GLES 3.0 只认 `#version 300 es`，而且 ES 没有默认浮点精度，必须显式声明 precision，
+// 否则 glCompileShader 直接失败——而且 InfoLog 常常是空的（"compile failed: (no log)"），
+// 很难定位。所以 Android 上加载着色器前必须走这一层翻译。
+func glslES3(src string) string {
+	if !strings.Contains(src, "#version 330 core") {
+		return src
+	}
+	return strings.Replace(src, "#version 330 core",
+		"#version 300 es\nprecision highp float;\nprecision highp int;", 1)
+}
 
 const vertShaderShape = `#version 330 core
 layout(location=0) in vec2 aPos;

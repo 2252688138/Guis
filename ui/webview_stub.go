@@ -1,16 +1,16 @@
 //go:build !windows && !js
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
 	"errors"
 
-	"gogui/internal/geom"
+	"guis/internal/geom"
 )
 
 // 非 Windows 桌面端的内嵌浏览器垫片。

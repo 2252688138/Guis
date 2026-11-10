@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
@@ -48,7 +48,7 @@ func NewTray(hwnd uintptr, id uint32, tooltip string, onClick func(), items []Tr
 	nid.UID = id
 	nid.UFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP
 	nid.UCallbackMessage = WM_TRAYICON
-	nid.HIcon = LoadIconW(0, IDI_APPLICATION)
+	nid.HIcon = appIcon()
 	copy(nid.SzTip[:], syscall.StringToUTF16(tooltip))
 	if Shell_NotifyIconW(NIM_ADD, &nid) == 0 {
 		return nil, syscall.EINVAL
@@ -58,6 +58,15 @@ func NewTray(hwnd uintptr, id uint32, tooltip string, onClick func(), items []Tr
 	Shell_NotifyIconW(NIM_SETVERSION, &nid)
 	t.added = true
 	return t, nil
+}
+
+// appIcon 托盘使用的图标：优先取 exe 资源里的应用图标（rsrc_windows_*.syso
+// 里的 RT_GROUP_ICON ID=1），没有嵌入资源时退回系统默认图标。
+func appIcon() uintptr {
+	if h := LoadIconW(GetModuleHandleW(nil), 1); h != 0 {
+		return h
+	}
+	return LoadIconW(0, IDI_APPLICATION)
 }
 
 // attach 把托盘挂到窗口，供 wndProc 派发消息。
@@ -102,7 +111,21 @@ func (t *Tray) Notify(title, msg string) {
 
 // Remove 移除托盘图标。
 func (t *Tray) Remove() {
+	if t == nil {
+		return
+	}
+	mu.Lock()
+	t.removeLocked()
+	mu.Unlock()
+}
+
+// removeLocked 移除托盘图标的内部实现，调用方必须已持有 mu。
+//
+// Window.Destroy 在同一把 mu 里逐个销毁窗口 / 托盘，若这里再 Lock 一次就会自锁死
+// （Go 的 sync.Mutex 不可重入），关窗口时进程直接卡住且画面定格。
+func (t *Tray) removeLocked() {
 	if !t.added {
+		delete(traysByHwnd, t.Hwnd)
 		return
 	}
 	var nid NOTIFYICONDATAW
@@ -111,9 +134,7 @@ func (t *Tray) Remove() {
 	nid.UID = t.ID
 	Shell_NotifyIconW(NIM_DELETE, &nid)
 	t.added = false
-	mu.Lock()
 	delete(traysByHwnd, t.Hwnd)
-	mu.Unlock()
 }
 
 // handleTray 处理 WM_TRAYICON（在 wndProc 中调用），返回是否已消费。

@@ -1,13 +1,13 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package display
 
-import "gogui/internal/win32"
+import "guis/internal/win32"
 
 // winWindow 把 Win32 窗口适配成 display.Window。
 //
@@ -80,6 +80,61 @@ func (v *winWindow) UnregisterHotkey(id int32) { v.w.UnregisterHotkey(id) }
 
 func (v *winWindow) Close()   { v.w.Close() }
 func (v *winWindow) Destroy() { v.w.Destroy() }
+
+// Visible 窗口当前是否可见（IsWindowVisible；最小化仍算可见）。
+func (v *winWindow) Visible() bool { return v.w.Visible() }
+
+// BlockClose 放弃本次 WM_CLOSE（窗口只隐藏、不销毁）。
+func (v *winWindow) BlockClose() { v.w.BlockClose() }
+
+// ---- 窗口特效 ----
+//
+// 这些方法**不进 display.Window 接口**：其它平台不需要实现，上层用可选接口
+// （类型断言）取用，改一个平台不会连带改六个后端文件。
+
+// SetWindowOpacity 整窗不透明度。
+func (v *winWindow) SetWindowOpacity(f float32) { v.w.SetWindowOpacity(f) }
+
+// WindowOpacity 当前不透明度。
+func (v *winWindow) WindowOpacity() float32 { return v.w.WindowOpacity() }
+
+// SetClickThrough 鼠标穿透。
+func (v *winWindow) SetClickThrough(on bool) { v.w.SetClickThrough(on) }
+
+// ClickThrough 当前是否鼠标穿透。
+func (v *winWindow) ClickThrough() bool { return v.w.ClickThrough() }
+
+// SetKeepOnBottom 窗口置底。
+func (v *winWindow) SetKeepOnBottom(on bool) { v.w.SetKeepOnBottom(on) }
+
+// SetSkipTaskbar 隐藏 / 显示任务栏按钮。
+func (v *winWindow) SetSkipTaskbar(on bool) { v.w.SetSkipTaskbar(on) }
+
+// SkipTaskbar 当前是否隐藏任务栏按钮。
+func (v *winWindow) SkipTaskbar() bool { return v.w.SkipTaskbar() }
+
+// SetCaptureExcluded 禁止截屏 / 录屏捕获。
+func (v *winWindow) SetCaptureExcluded(on bool) { v.w.SetCaptureExcluded(on) }
+
+// SetDarkTitleBar 系统标题栏深色。
+func (v *winWindow) SetDarkTitleBar(on bool) { v.w.SetDarkTitleBar(on) }
+
+// SetBackdrop 设置 Win11 背景材质。
+func (v *winWindow) SetBackdrop(kind int) { v.w.SetBackdrop(win32.BackdropKindSet(kind)) }
+
+// SetMinSize 最小客户区尺寸（逻辑像素）。
+func (v *winWindow) SetMinSize(w, h int) { v.w.SetMinSize(w, h) }
+
+// SetMaxSize 最大客户区尺寸（逻辑像素）。
+func (v *winWindow) SetMaxSize(w, h int) { v.w.SetMaxSize(w, h) }
+
+// Activate 拉到前台并抢焦点。
+func (v *winWindow) Activate() { v.w.Activate() }
+
+// FlashTaskbar 闪烁任务栏图标。
+func (v *winWindow) FlashTaskbar(count int, untilFocused bool) {
+	v.w.FlashTaskbar(count, untilFocused)
+}
 
 // fromWin32 把 Win32 事件翻译成平台无关事件。
 func fromWin32(ev win32.Event) Event {

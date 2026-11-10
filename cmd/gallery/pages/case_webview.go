@@ -1,10 +1,10 @@
-// Go-gui — gallery 页面拆分：WebView 浏览器
+// guis — gallery 页面拆分：WebView 浏览器
 // 本文件属于 pages 包，与其它页面文件一起由 main.go 引入。
 
 package pages
 
 import (
-	"gogui/ui"
+	"guis/ui"
 )
 
 // ---- 案例：WebView 内嵌浏览器（系统 WebView2）----
@@ -19,7 +19,7 @@ var (
 // webviewDemoHTML 本机示例页（离线也能看、能交互：输入 / 按钮 / 列表滚动）。
 const webviewDemoHTML = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
-<title>GoGUI · WebView 示例</title>
+<title>GUIS · WebView 示例</title>
 <style>
   :root{color-scheme:dark}
   *{box-sizing:border-box}
@@ -43,7 +43,7 @@ const webviewDemoHTML = `<!doctype html>
   @keyframes slide{0%,100%{margin-left:0}50%{margin-left:62%}}
 </style></head><body>
   <div class="hero">
-    <h1>GoGUI · WebView2</h1>
+    <h1>GUIS · WebView2</h1>
     <p>这段页面由系统 Edge 内核渲染，滚动、输入、按钮、动画都是浏览器原生的。</p>
   </div>
   <div class="wrap">

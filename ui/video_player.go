@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -10,7 +10,7 @@ import (
 	"math"
 	"time"
 
-	"gogui/internal/geom"
+	"guis/internal/geom"
 )
 
 // 播放器组件（参考流媒体站点：金色进度条 + 无底图标按钮 + 右侧倍速面板）。
@@ -52,7 +52,7 @@ func VideoPlayer(key string, p *Player) *Node {
 		key = "video"
 	}
 	if p == nil {
-		return Empty("未绑定播放器", "用 ui.NewPlayer(clip) 创建播放状态")
+		return Empty(T("ui.video.unbound"), T("ui.video.unboundHint"))
 	}
 	now := AnimTime()
 	// 兜底：鼠标移出窗口等情况收不到松手回调，超时无拖动事件即视为已松开
@@ -166,11 +166,11 @@ func VideoPlayer(key string, p *Player) *Node {
 // videoSideTools 画面左侧中间的旋转 / 锁定竖排按钮（形状图标，不依赖字形）。
 func videoSideTools(key string, p *Player, op float32) *Node {
 	rot := videoRoundBtn(key+"-rotate", videoIconRotate, p.Rotation&3 != 0, func() { p.RotateBy(1) })
-	TooltipOf(rot, fmt.Sprintf("旋转画面 90°（当前 %d°）", p.RotationDeg()))
+	TooltipOf(rot, Tf("ui.video.rotateTip", map[string]string{"deg": fmt.Sprint(p.RotationDeg())}))
 	lock := videoRoundBtn(key+"-lock", videoIconLock, p.Locked, func() { p.ToggleLock() })
-	tip := "锁定画面（禁止点击与快捷键）"
+	tip := T("ui.video.lockTip")
 	if p.Locked {
-		tip = "已锁定：点此解锁"
+		tip = T("ui.video.unlockTip")
 	}
 	TooltipOf(lock, tip)
 	col := Column(rot, lock).St(St().AbsTL(10, 0).Hp(100).GapOf(8).Fade(op))
@@ -284,9 +284,9 @@ func videoControlLayer(key string, p *Player, op float32) *Node {
 		st.HasB, st.AbsB = true, 0
 		return Column(videoSeekBar(key+"-seek", p, true)).St(st).K(key + "-ctrl-ro")
 	}
-	glyph, tip := "▶", "播放"
+	glyph, tip := "▶", T("ui.video.play")
 	if p.Playing {
-		glyph, tip = "", "暂停"
+		glyph, tip = "", T("ui.video.pause")
 	}
 	play := videoIconBtn(key+"-play", glyph, 34, func() { p.TogglePlay() })
 	TooltipOf(play, tip)
@@ -294,12 +294,12 @@ func videoControlLayer(key string, p *Player, op float32) *Node {
 	cells := []*Node{play}
 	if p.OnPrev != nil {
 		prev := videoSkipIcon(key+"-prev", true, func() { p.OnPrev() })
-		TooltipOf(prev, "上一集")
+		TooltipOf(prev, T("ui.video.prevEpisode"))
 		cells = append(cells, prev)
 	}
 	if p.OnNext != nil {
 		next := videoSkipIcon(key+"-next", false, func() { p.OnNext() })
-		TooltipOf(next, "下一集")
+		TooltipOf(next, T("ui.video.nextEpisode"))
 		cells = append(cells, next)
 	}
 	cells = append(cells,
@@ -307,8 +307,8 @@ func videoControlLayer(key string, p *Player, op float32) *Node {
 		Text(formatVideoTime(p.Pos())+" / "+formatVideoTime(p.Duration())).
 			St(St().Text(11.5, 500, "rgba(226,232,240,0.88)")),
 		Spacer(),
-		videoTextBtn(key+"-loop", "循环", 40, p.Loop, func() { p.SetLoop(!p.Loop) }),
-		videoTextBtn(key+"-speed", "倍速", 44, videoSpeedOpen[key], func() {
+		videoTextBtn(key+"-loop", T("ui.video.loop"), 40, p.Loop, func() { p.SetLoop(!p.Loop) }),
+		videoTextBtn(key+"-speed", T("ui.video.speed"), 44, videoSpeedOpen[key], func() {
 			videoSpeedOpen[key] = !videoSpeedOpen[key]
 			RequestRedraw()
 		}),
@@ -671,7 +671,7 @@ func videoVolPanelPos(icon, root geom.Rect, panelW, panelH float32) (float32, fl
 // videoSpeedLabel 倍速文本（1 显示为「正常」，其余为 0.5x、1.25x 等）。
 func videoSpeedLabel(v float32) string {
 	if v == 1 {
-		return "正常"
+		return T("ui.video.speedNormal")
 	}
 	if v == float32(int(v)) {
 		return fmt.Sprintf("%dx", int(v))

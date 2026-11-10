@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package text
 
@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"gogui/internal/win32"
+	"guis/internal/win32"
 )
 
 // emojiBitmap 一张彩色字形位图（RGBA，首行为顶部）。

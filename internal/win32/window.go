@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -119,6 +120,21 @@ type Window struct {
 	acceptDrops bool
 	// topmost 当前是否置顶（SetAlwaysOnTop）
 	topmost bool
+
+	// 最小 / 最大尺寸（逻辑像素，0 = 不限制；由 WM_GETMINMAXINFO 应用）
+	minW, minH int32
+	maxW, maxH int32
+
+	// 窗口特效状态（wineffects.go）；变更后需要查询时直接用缓存值
+	opacity         float32
+	clickThrough    bool
+	bottom          bool
+	skipTaskbar     bool
+	captureExcluded bool
+	darkTitle       bool
+	backdrop        int
+	// vetoClose 本次 WM_CLOSE 是否被上层放弃（收进托盘时不销毁窗口）
+	vetoClose atomic.Bool
 	// roundedDWM / roundedRgn 记录当前生效的圆角实现，便于切换与取消
 	roundedDWM bool
 	roundedRgn bool
@@ -172,7 +188,7 @@ func NewWindow(cfg Config) (*Window, error) {
 			LpszClassName: className,
 			// 背景刷：非客户区（无标题栏时的边框带）用深色，
 			// 否则系统会按默认白色绘制，表现为“隐藏标题栏后顶部一条白边”。
-			HbrBackground: CreateSolidBrush(0x00190F0B), // #0b0f19
+			HbrBackground: CreateSolidBrush(0x000A0605), // #05060a（与启动动画底色一致，杜绝白闪）
 		}
 		classAtom = RegisterClassExW(&wc)
 		if classAtom == 0 {
@@ -229,13 +245,12 @@ func NewWindow(cfg Config) (*Window, error) {
 	mu.Unlock()
 
 	// 启动即居中：按窗口所在显示器的工作区（排除任务栏）水平 + 垂直居中。
-	// 必须在 ShowWindow 之前，避免窗口先在默认位置闪一下再瞬移。
+	// 必须在显示之前，避免窗口先在默认位置闪一下再瞬移。
 	w.Center()
 
-	// 首次 ShowWindow 会被 STARTUPINFO.wShowWindow 覆盖（例如以隐藏方式启动时），
-	// 因此调用两次确保按 SW_SHOW 显示。
-	ShowWindow(hwnd, SW_SHOW)
-	ShowWindow(hwnd, SW_SHOW)
+	// 注意：这里**不**立刻 ShowWindow。窗口先保持隐藏，等 ui 层画完第一帧再显示
+	// （App.present 里首次 Swap 后调用 SetVisible(true)），否则会先看到窗口类背景色
+	// 或白色客户区，也就是启动时的「白屏/闪一下」。
 	UpdateWindow(hwnd)
 
 	hdc := GetDC(hwnd)
@@ -291,6 +306,21 @@ func NewWindow(cfg Config) (*Window, error) {
 	w.hideSystemBorder()
 	// 文件拖入（WM_DROPFILES）：默认接收，可用 SetAcceptDrops(false) 关闭
 	w.SetAcceptDrops(!cfg.NoDrops)
+	// 尺寸约束：Options / display.Config 里的 MinWidth/MinHeight 直接生效，
+	// 业务后续可用 App.SetMinSize / SetMaxSize 调整。
+	if cfg.MinWidth > 0 || cfg.MinHeight > 0 {
+		s := w.scale
+		if s <= 0 {
+			s = 1
+		}
+		w.minW = int32(float32(cfg.MinWidth) * s)
+		w.minH = int32(float32(cfg.MinHeight) * s)
+	}
+	// 剪贴板变化通知：注册后系统通过 WM_CLIPBOARDUPDATE 主动推送，
+	// WatchClipboard 因此不再需要轮询序号。
+	if procAddClipboardFormatListener.Find() == nil {
+		procAddClipboardFormatListener.Call(w.Hwnd)
+	}
 	w.running = true
 	// 初始圆角（需在 scale 就绪后应用，SetWindowRgn 按物理像素计算）
 	if cfg.CornerRadius > 0 {
@@ -372,7 +402,8 @@ func (w *Window) Destroy() {
 	w.running = false
 	mu.Lock()
 	if t := traysByHwnd[w.Hwnd]; t != nil {
-		t.Remove()
+		// 必须用 removeLocked：这里已持有 mu，再走 Remove() 会重复加锁自锁死
+		t.removeLocked()
 	}
 	delete(wndByHwnd, w.Hwnd)
 	mu.Unlock()
@@ -415,16 +446,57 @@ func wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 	}
 
 	switch msg {
+	case WM_CLIPBOARDUPDATE:
+		// 剪贴板变化（AddClipboardFormatListener 注册后由系统投递）：
+		// 直接转发给注册方，避免 500ms 轮询序号带来的延迟与常驻开销。
+		dispatchClipboardChange()
+		return 0
+	case WM_GETMINMAXINFO:
+		// 窗口尺寸约束：业务用 SetMinSize / SetMaxSize 设置后在这里生效。
+		// 不填 PiMinTrackSize 时系统允许把窗口拖成 0×0，自绘布局会瞬间塌掉。
+		if lp != 0 && (w.minW > 0 || w.minH > 0 || w.maxW > 0 || w.maxH > 0) {
+			mmi := (*MINMAXINFO)(unsafe.Pointer(lp))
+			if w.minW > 0 {
+				mmi.PtMinTrackSize.X = w.minW
+			}
+			if w.minH > 0 {
+				mmi.PtMinTrackSize.Y = w.minH
+			}
+			if w.maxW > 0 {
+				mmi.PtMaxTrackSize.X = w.maxW
+			}
+			if w.maxH > 0 {
+				mmi.PtMaxTrackSize.Y = w.maxH
+			}
+			return 0
+		}
 	case WM_CLOSE:
+		// 先派发关闭事件：上层可在回调里调用 BlockClose 放弃这次关闭
+		//（「关闭时最小化到托盘」只隐藏窗口，不销毁）。标志每次重置，
+		// 避免上一次拦截影响下一次真正的退出。
+		w.vetoClose.Store(false)
 		if w.onEvent != nil {
 			w.onEvent(Event{Type: EvClose})
+		}
+		if w.vetoClose.Load() {
+			w.running = true
+			ShowWindow(hwnd, SW_HIDE)
+			return 0
 		}
 		w.running = false
 		DestroyWindow(hwnd)
 		return 0
 
 	case WM_DESTROY:
+		// 注销剪贴板监听，避免窗口销毁后仍收到 WM_CLIPBOARDUPDATE
+		if procRemoveClipboardFormatListener.Find() == nil {
+			procRemoveClipboardFormatListener.Call(hwnd)
+		}
 		mu.Lock()
+		// 直接关窗口（WM_CLOSE 未被拦截）不会走 Window.Destroy，托盘图标会残留成幽灵图标
+		if t := traysByHwnd[hwnd]; t != nil {
+			t.removeLocked()
+		}
 		delete(wndByHwnd, hwnd)
 		empty := len(wndByHwnd) == 0
 		mu.Unlock()

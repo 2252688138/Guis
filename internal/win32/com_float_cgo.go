@@ -1,9 +1,9 @@
-//go:build windows && cgo && gogui_cgo
+//go:build windows && cgo && guis_cgo
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package win32
 
@@ -16,40 +16,40 @@ package win32
 #include <windows.h>
 #include <stdint.h>
 
-typedef HRESULT (STDMETHODCALLTYPE *gogui_fn1f)(void *self, float a);
-typedef HRESULT (STDMETHODCALLTYPE *gogui_fn2f)(void *self, float a, float b);
-typedef HRESULT (STDMETHODCALLTYPE *gogui_fnf1p)(void *self, float a, void *p);
-typedef HRESULT (STDMETHODCALLTYPE *gogui_fnp1f)(void *self, void *p, float a);
-typedef HRESULT (STDMETHODCALLTYPE *gogui_fnp)(void *self, void *p);
+typedef HRESULT (STDMETHODCALLTYPE *guis_fn1f)(void *self, float a);
+typedef HRESULT (STDMETHODCALLTYPE *guis_fn2f)(void *self, float a, float b);
+typedef HRESULT (STDMETHODCALLTYPE *guis_fnf1p)(void *self, float a, void *p);
+typedef HRESULT (STDMETHODCALLTYPE *guis_fnp1f)(void *self, void *p, float a);
+typedef HRESULT (STDMETHODCALLTYPE *guis_fnp)(void *self, void *p);
 
-static void **gogui_vtbl(void *obj) { return *(void ***)obj; }
+static void **guis_vtbl(void *obj) { return *(void ***)obj; }
 
-HRESULT gogui_call_1f(void *obj, int slot, float a) {
-    gogui_fn1f fn = (gogui_fn1f)gogui_vtbl(obj)[slot];
+HRESULT guis_call_1f(void *obj, int slot, float a) {
+    guis_fn1f fn = (guis_fn1f)guis_vtbl(obj)[slot];
     if (!fn) return E_POINTER;
     return fn(obj, a);
 }
 
-HRESULT gogui_call_2f(void *obj, int slot, float a, float b) {
-    gogui_fn2f fn = (gogui_fn2f)gogui_vtbl(obj)[slot];
+HRESULT guis_call_2f(void *obj, int slot, float a, float b) {
+    guis_fn2f fn = (guis_fn2f)guis_vtbl(obj)[slot];
     if (!fn) return E_POINTER;
     return fn(obj, a, b);
 }
 
-HRESULT gogui_call_f1p(void *obj, int slot, float a, void *p) {
-    gogui_fnf1p fn = (gogui_fnf1p)gogui_vtbl(obj)[slot];
+HRESULT guis_call_f1p(void *obj, int slot, float a, void *p) {
+    guis_fnf1p fn = (guis_fnf1p)guis_vtbl(obj)[slot];
     if (!fn) return E_POINTER;
     return fn(obj, a, p);
 }
 
-HRESULT gogui_call_p1f(void *obj, int slot, void *p, float a) {
-    gogui_fnp1f fn = (gogui_fnp1f)gogui_vtbl(obj)[slot];
+HRESULT guis_call_p1f(void *obj, int slot, void *p, float a) {
+    guis_fnp1f fn = (guis_fnp1f)guis_vtbl(obj)[slot];
     if (!fn) return E_POINTER;
     return fn(obj, p, a);
 }
 
-HRESULT gogui_call_p(void *obj, int slot, void *p) {
-    gogui_fnp fn = (gogui_fnp)gogui_vtbl(obj)[slot];
+HRESULT guis_call_p(void *obj, int slot, void *p) {
+    guis_fnp fn = (guis_fnp)guis_vtbl(obj)[slot];
     if (!fn) return E_POINTER;
     return fn(obj, p);
 }
@@ -66,7 +66,7 @@ func ComCallF(obj uintptr, slot int, v float32) uint32 {
 	if obj == 0 {
 		return 0x80004003
 	}
-	return uint32(C.gogui_call_1f(unsafe.Pointer(obj), C.int(slot), C.float(v)))
+	return uint32(C.guis_call_1f(unsafe.Pointer(obj), C.int(slot), C.float(v)))
 }
 
 // ComCallFF 调用 obj 的第 slot 个方法，参数为两个 float。
@@ -74,7 +74,7 @@ func ComCallFF(obj uintptr, slot int, a, b float32) uint32 {
 	if obj == 0 {
 		return 0x80004003
 	}
-	return uint32(C.gogui_call_2f(unsafe.Pointer(obj), C.int(slot), C.float(a), C.float(b)))
+	return uint32(C.guis_call_2f(unsafe.Pointer(obj), C.int(slot), C.float(a), C.float(b)))
 }
 
 // ComCallF1P 调用 fn(self, float, void*)。
@@ -82,7 +82,7 @@ func ComCallF1P(obj uintptr, slot int, a float32, p uintptr) uint32 {
 	if obj == 0 {
 		return 0x80004003
 	}
-	return uint32(C.gogui_call_f1p(unsafe.Pointer(obj), C.int(slot), C.float(a), unsafe.Pointer(p)))
+	return uint32(C.guis_call_f1p(unsafe.Pointer(obj), C.int(slot), C.float(a), unsafe.Pointer(p)))
 }
 
 // ComCallP1F 调用 fn(self, void*, float)。
@@ -90,5 +90,5 @@ func ComCallP1F(obj uintptr, slot int, p uintptr, a float32) uint32 {
 	if obj == 0 {
 		return 0x80004003
 	}
-	return uint32(C.gogui_call_p1f(unsafe.Pointer(obj), C.int(slot), unsafe.Pointer(p), C.float(a)))
+	return uint32(C.guis_call_p1f(unsafe.Pointer(obj), C.int(slot), unsafe.Pointer(p), C.float(a)))
 }

@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -27,5 +27,20 @@ func platformCaps() []Cap {
 		CapMultiMonitor,
 		CapSingleInstance,
 		CapModernNotify,
+		CapAutoStart,
+		// 系统级操作（文件 / 窗口 / 任务栏 / 会话）
+		CapFileWatch,
+		CapKnownFolders,
+		CapDragOut,
+		CapFileIcon,
+		CapNativeDialog,
+		CapSystemInfo,
+		CapTaskbar,
+		CapWindowFX,
+		CapClipboardRich,
+		CapPowerStatus,
+		CapSession,
+		CapInputSim,
+		CapShellLink,
 	}
 }

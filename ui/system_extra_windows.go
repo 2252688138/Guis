@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -12,7 +12,7 @@ import (
 	"image"
 	"time"
 
-	"gogui/internal/win32"
+	"guis/internal/win32"
 )
 
 // 桌面增强能力（Windows 真实现）：多显示器、屏幕捕获与吸管、剪贴板监听、
@@ -62,12 +62,26 @@ func Clipboard() ClipboardInfo { return win32.ClipboardSnapshot() }
 // ClipboardImage 读取剪贴板位图。
 func ClipboardImage() (*image.NRGBA, error) { return win32.ClipboardImage() }
 
-// WatchClipboard 监听剪贴板变化（500ms 轮询序号，变化时回调）。
-// 返回停止函数；回调在 UI 线程执行。
+// WatchClipboard 监听剪贴板变化。
+//
+// 优先走 WM_CLIPBOARDUPDATE（AddClipboardFormatListener，零轮询、复制即触发）；
+// 没有窗口或系统不支持时回退到 500ms 轮询序号。回调在 UI 线程执行。
 func WatchClipboard(fn func(ClipboardInfo)) (stop func()) {
 	if fn == nil {
 		return func() {}
 	}
+	emit := func() {
+		postToUI(func() {
+			fn(win32.ClipboardSnapshot())
+			RequestRedraw()
+		})
+	}
+	if a := currentApp.Load(); a != nil {
+		if unreg := win32.WatchClipboardNative(a.HWND(), emit); unreg != nil {
+			return unreg
+		}
+	}
+	// 回退：轮询序号
 	quit := make(chan struct{})
 	go func() {
 		defer recoverReport("clipboard-watch")
@@ -84,11 +98,7 @@ func WatchClipboard(fn func(ClipboardInfo)) (stop func()) {
 					continue
 				}
 				last = seq
-				info := win32.ClipboardSnapshot()
-				postToUI(func() {
-					fn(info)
-					RequestRedraw()
-				})
+				emit()
 			}
 		}
 	}()
@@ -151,6 +161,27 @@ func printDocument(hwnd uintptr, title string, doc Printable) (bool, error) {
 		scale := float32(pw) / PageW96
 		c := &PrintCanvas{W: PageW96, H: PageH96, scale: scale, dc: dc, live: true}
 		_ = ph
+		doc.DrawPage(c, page)
+		return true
+	})
+}
+
+// printList 可用打印机列表（默认打印机在前）。
+func printList() []string { return win32.Printers() }
+
+// printDefault 默认打印机名。
+func printDefault() string { return win32.DefaultPrinter() }
+
+// printTo 不弹系统对话框，直接打印到指定打印机。
+func printTo(printer, title string, doc Printable) (bool, error) {
+	pages := doc.Pages()
+	if pages <= 0 {
+		pages = 1
+	}
+	return win32.PrintTo(printer, title, pages, func(dc uintptr, page int, info win32.PrintInfo) bool {
+		pw, _ := win32.PagePixels(info)
+		scale := float32(pw) / PageW96
+		c := &PrintCanvas{W: PageW96, H: PageH96, scale: scale, dc: dc, live: true}
 		doc.DrawPage(c, page)
 		return true
 	})

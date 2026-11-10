@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -45,6 +45,10 @@ func init() {
 	RegisterShortcut(ScopeGlobal, Shortcut{
 		ID: "edit.copy", Keys: "Ctrl+C", Label: "复制", Group: "编辑",
 		Run: func() {
+			// 焦点在输入框 / 多行输入时复制的是控件内的选区，不能再走阅读区选区
+			if DispatchTextEdit('C') {
+				return
+			}
 			if HasSelection() {
 				ClipboardSetText(sel.Text)
 				ToastShow("已复制")

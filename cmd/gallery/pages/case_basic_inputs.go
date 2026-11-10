@@ -1,11 +1,11 @@
-// Go-gui — gallery 页面拆分：基础组件的输入类控件
+// guis — gallery 页面拆分：基础组件的输入类控件
 // 下拉框 / 多行输入 / 数字 / 日期 / 搜索 / 标签 / 复选，全部来自 ui 包，
 // 浮层（下拉、日历）由 main.go 根 Stack 末尾的 SelectLayers / DateLayers 统一渲染。
 
 package pages
 
 import (
-	"gogui/ui"
+	"guis/ui"
 	"strconv"
 )
 
@@ -190,15 +190,7 @@ func basicMoreInputsCard() *ui.Node {
 		ui.FormItemInline("搜索", false, "", ui.SearchInput("basic-search", basicSearch, "搜索组件 / 成员…", func(v string) {
 			basicSearch = v
 		})),
-		ui.Row(
-			ui.Text("擅长方向").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(ui.LabelW)),
-			basicTagCell("Go"),
-			basicTagCell("渲染"),
-			basicTagCell("组件库"),
-			basicTagCell("OpenGL"),
-			ui.Spacer(),
-			ui.Text("已选："+basicTagSummary()).St(ui.St().Text(11.5, 400, ui.ColTextMuted)),
-		).St(ui.St().GapOf(8)).AlignTo(ui.AlignCenter),
+		basicTagsRow(),
 		ui.Row(
 			ui.Checkbox("basic-agree", "启用本地缓存", basicAgree, func(v bool) { basicAgree = v }),
 			ui.Checkbox("basic-readonly", "只读模式", basicReadOnly, func(v bool) { basicReadOnly = v }),
@@ -208,6 +200,35 @@ func basicMoreInputsCard() *ui.Node {
 		ui.KeyValue("邮箱校验", orDash(basicMailErr)),
 		ui.KeyValue("复选状态", "本地缓存 "+onOff(basicAgree)+" / 只读 "+onOff(basicReadOnly)),
 	)
+}
+
+// basicTagsRow 擅长方向 + 已选汇总。
+//
+// 宽屏一行放得下；窄屏（手机逻辑宽度 ≈ 480）时汇总会被挤出屏幕右侧裁掉，
+// 改为单独一行并折行显示。
+func basicTagsRow() *ui.Node {
+	picked := ui.Text("已选：" + basicTagSummary()).St(ui.St().Text(11.5, 400, ui.ColTextMuted))
+	if ui.ViewportW() < 640 {
+		return ui.Column(
+			ui.Wrap(
+				ui.Text("擅长方向").St(ui.St().Text(12.5, 500, ui.ColTextDim)),
+				basicTagCell("Go"),
+				basicTagCell("渲染"),
+				basicTagCell("组件库"),
+				basicTagCell("OpenGL"),
+			).St(ui.St().GapOf(8)),
+			picked.St(ui.St().WrapOn()),
+		).St(ui.St().GapOf(8))
+	}
+	return ui.Row(
+		ui.Text("擅长方向").St(ui.St().Text(12.5, 500, ui.ColTextDim).W(ui.LabelW)),
+		basicTagCell("Go"),
+		basicTagCell("渲染"),
+		basicTagCell("组件库"),
+		basicTagCell("OpenGL"),
+		ui.Spacer(),
+		picked,
+	).St(ui.St().GapOf(8)).AlignTo(ui.AlignCenter)
 }
 
 // onOff 布尔值转「开 / 关」文案。

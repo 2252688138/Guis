@@ -1,9 +1,9 @@
 //go:build darwin
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 // Package objc 极简 Objective-C 运行时桥（purego 动态加载，零 cgo）。
 //
@@ -63,6 +63,7 @@ var (
 	msgStr     func(id, sel uintptr, p *byte) uintptr
 	msgStrPtr  func(id, sel uintptr) *byte
 	msgF       func(id, sel uintptr) float64                          // 返回 CGFloat
+	msgFU      func(id, sel uintptr, v float64) uintptr               // 1×CGFloat → id
 	msgRect    func(id, sel uintptr, r Rect) uintptr                  // 1 个 NSRect
 	msgRect3   func(id, sel uintptr, r Rect, a, b, c uintptr) uintptr // NSRect + 3 个整数
 	msgRectB   func(id, sel uintptr, r Rect, b uintptr) uintptr       // NSRect + BOOL
@@ -109,6 +110,7 @@ func Load() error {
 	purego.RegisterFunc(&msgStr, send)
 	purego.RegisterFunc(&msgStrPtr, send)
 	purego.RegisterFunc(&msgF, send)
+	purego.RegisterFunc(&msgFU, send)
 	purego.RegisterFunc(&msgRect, send)
 	purego.RegisterFunc(&msgRect3, send)
 	purego.RegisterFunc(&msgRectB, send)
@@ -155,6 +157,9 @@ func FloatOf(id uintptr, sel string) float64 { return msgF(id, Sel(sel)) }
 func SendI(id uintptr, sel string, v int64) {
 	purego.SyscallN(msgSendAddr, id, Sel(sel), uintptr(v))
 }
+
+// SendFRet 发消息（1 个 CGFloat 参数，返回对象指针），如 statusItemWithLength:。
+func SendFRet(id uintptr, sel string, v float64) uintptr { return msgFU(id, Sel(sel), v) }
 
 // SendF 发消息（1 个 CGFloat 参数，如 setAlphaValue:）。
 func SendF(id uintptr, sel string, v float64) {

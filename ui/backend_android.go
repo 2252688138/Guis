@@ -1,9 +1,9 @@
 //go:build android
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -11,8 +11,8 @@ import (
 	"errors"
 	"time"
 
-	"gogui/internal/android"
-	"gogui/internal/gpu"
+	"guis/internal/android"
+	"guis/internal/gpu"
 )
 
 // Android 窗口后端：NativeActivity + EGL + GLES 3，触摸事件合成为鼠标事件。
@@ -37,6 +37,8 @@ type platformWin struct {
 	// 触摸合成的鼠标状态
 	prevX, prevY float32
 	touching     bool
+	// dragAcc 手指纵向累计位移（物理像素），用于合成滚轮事件（见 synthWheel）
+	dragAcc float32
 }
 
 // androidWin 当前窗口（只有一个；pollMessages 靠它分发事件）。
@@ -93,15 +95,19 @@ func androidPump(p *platformWin) {
 		switch ev.Kind {
 		case android.EvTouchDown:
 			p.touching = true
+			p.dragAcc = 0
 			p.prevX, p.prevY = ev.X, ev.Y
 			p.handler(Event{Type: EvTouchDown, X: ev.X, Y: ev.Y, Pointer: 1})
 			p.handler(Event{Type: EvMouseDown, X: ev.X, Y: ev.Y, Pointer: 1})
 		case android.EvTouchMove:
+			dy := ev.Y - p.prevY
 			p.prevX, p.prevY = ev.X, ev.Y
 			p.handler(Event{Type: EvTouchMove, X: ev.X, Y: ev.Y, Pointer: 1})
 			p.handler(Event{Type: EvMouseMove, X: ev.X, Y: ev.Y, Pointer: 1})
+			p.synthWheel(ev.X, ev.Y, dy)
 		case android.EvTouchUp:
 			p.touching = false
+			p.dragAcc = 0
 			p.handler(Event{Type: EvTouchUp, X: ev.X, Y: ev.Y, Pointer: 1})
 			p.handler(Event{Type: EvMouseUp, X: ev.X, Y: ev.Y, Pointer: 1})
 		case android.EvKey:
@@ -115,6 +121,31 @@ func androidPump(p *platformWin) {
 			}
 		}
 	})
+}
+
+// synthWheel 把手指纵向拖动合成成滚轮事件。
+//
+// 组件库的 Scroll 只认 EvMouseWheel（桌面端由滚轮驱动），移动端没有滚轮，
+// 不合成的话页面上根本滚不动。dy 是本次触摸移动的纵向位移（物理像素），
+// 累计超过阈值才发事件，避免「点击时手指轻微抖动」被当成滚动。
+func (p *platformWin) synthWheel(x, y, dy float32) {
+	if !p.touching || dy == 0 {
+		return
+	}
+	p.dragAcc += dy
+	// 阈值压到 4px：越小越跟手；太小会把「点击时手指轻微抖动」当成滚动。
+	const slop = 4 // 物理像素
+	if p.dragAcc > -slop && p.dragAcc < slop {
+		return
+	}
+	u := UIScale()
+	if u <= 0 {
+		u = 1
+	}
+	// EvMouseWheel 的 DY 以「滚轮格」为单位（1 格 = wheelStepSize 逻辑像素），
+	// 而触摸位移是物理像素，所以这里除以 uiScale 折算成逻辑像素。
+	p.handler(Event{Type: EvMouseWheel, X: x, Y: y, DY: p.dragAcc / (u * wheelStepSize), Pointer: 1})
+	p.dragAcc = 0
 }
 
 // ---- Backend 方法集 ----

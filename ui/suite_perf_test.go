@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -53,7 +53,8 @@ func TestAnimSlowFlag(t *testing.T) {
 	if fast := St().AnimOn(); fast.AnimSlow {
 		t.Fatal("AnimOn 不应降帧")
 	}
-	merged := St().merge(*St().AnimSlowOn())
+	merged := *St()
+	merged.merge(St().AnimSlowOn())
 	if !merged.Animated || !merged.AnimSlow {
 		t.Fatalf("merge 后丢失 AnimSlow：%+v", merged)
 	}

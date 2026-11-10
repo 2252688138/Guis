@@ -1,14 +1,14 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
 import (
 	"math"
 
-	"gogui/internal/gpu"
+	"guis/internal/gpu"
 )
 
 // 图表的软件光栅层：GPU 后端只有「圆角矩形 / 字形 / 图片」三类图元，

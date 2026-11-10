@@ -1,7 +1,7 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gogui/internal/text"
+	"guis/internal/text"
 )
 
 // Markdown 渲染组件（声明式节点，每帧重建）。
@@ -20,7 +20,7 @@ import (
 //	→ 行内样式（粗体/斜体/删除线/行内代码/链接/高亮/kbd）
 //	→ 自绘排版（标题/段落/列表/引用/代码/表格/图片/分隔线）。
 //
-// 与 Web 版的差异（受 GoGUI 约束）：
+// 与 Web 版的差异（受 GUIS 约束）：
 //   - KText 只支持单一字体样式，行内多样式按「片段 + 手工折行」排版；
 //   - 图片支持本地文件与 http(s) 远程地址（远程先下载到临时目录缓存）；
 //   - video/audio 块降级为占位卡（真正播放请用 ui.VideoPlayer）；
@@ -624,7 +624,7 @@ func Markdown(key, src string, opts ...MarkdownOptions) *Node {
 		noTOC:  o.NoTOC,
 	}
 
-	kids, hit := mdTreeCache[mk]
+	kids, hit := mdTreeGet(mk)
 	if !hit {
 		prevLink := mdLinkHandler
 		if o.OnLink != nil {
@@ -637,13 +637,7 @@ func Markdown(key, src string, opts ...MarkdownOptions) *Node {
 			kids = append(kids, Box().St(St().H(8)), fn)
 		}
 		mdLinkHandler = prevLink
-		// 超大文档不缓存：避免一篇几万节点的文档把渲染树常驻在内存里
-		if mdCountNodes(kids) <= mdTreeCacheMaxNodes {
-			if len(mdTreeCache) >= mdTreeCacheMaxKeys {
-				mdTreeCache = map[mdTreeKey][]*Node{}
-			}
-			mdTreeCache[mk] = kids
-		}
+		mdTreePut(mk, kids)
 	}
 
 	// 每帧复制一层子节点指针：返回的 Children 是独立切片，
@@ -678,13 +672,74 @@ type mdTreeKey struct {
 }
 
 const (
-	// mdTreeCacheMaxKeys 缓存文档数上限（超出整体丢弃）。
-	mdTreeCacheMaxKeys = 6
+	// mdTreeCacheMaxKeys 缓存文档数上限（超出按最久未用淘汰，不再整体清空：
+	// 整体清空会让「一屏十几条消息」的长会话每帧都重新排版整篇 Markdown）。
+	mdTreeCacheMaxKeys = 48
 	// mdTreeCacheMaxNodes 单篇文档节点数上限（超过则不缓存）。
 	mdTreeCacheMaxNodes = 6000
+	// mdTreeCacheMaxTotal 全部缓存文档的节点总数上限（约 30k 节点 ≈ 9MB）。
+	mdTreeCacheMaxTotal = 30000
 )
 
-var mdTreeCache = map[mdTreeKey][]*Node{}
+// mdTreeEntry 渲染树缓存条目（记录节点数与最近使用序号，用于 LRU 淘汰）。
+type mdTreeEntry struct {
+	kids  []*Node
+	nodes int
+	at    uint64
+}
+
+var (
+	mdTreeCache = map[mdTreeKey]*mdTreeEntry{}
+	mdTreeSeq   uint64
+	mdTreeTotal int
+)
+
+// mdTreeGet 取缓存并把条目标记为「最近使用」。
+func mdTreeGet(k mdTreeKey) ([]*Node, bool) {
+	e, ok := mdTreeCache[k]
+	if !ok {
+		return nil, false
+	}
+	mdTreeSeq++
+	e.at = mdTreeSeq
+	return e.kids, true
+}
+
+// mdTreePut 写入缓存；超出数量 / 节点总预算时按最久未用淘汰。
+func mdTreePut(k mdTreeKey, kids []*Node) {
+	if _, ok := mdTreeCache[k]; ok {
+		return
+	}
+	n := mdCountNodes(kids)
+	// 超大文档不缓存：避免一篇几万节点的文档把渲染树常驻在内存里
+	if n > mdTreeCacheMaxNodes {
+		return
+	}
+	for len(mdTreeCache) >= mdTreeCacheMaxKeys || mdTreeTotal+n > mdTreeCacheMaxTotal {
+		var oldKey mdTreeKey
+		var oldest = ^uint64(0)
+		found := false
+		for kk, ee := range mdTreeCache {
+			if ee.at < oldest {
+				oldest, oldKey, found = ee.at, kk, true
+			}
+		}
+		if !found {
+			break
+		}
+		mdTreeTotal -= mdTreeCache[oldKey].nodes
+		delete(mdTreeCache, oldKey)
+	}
+	mdTreeSeq++
+	mdTreeCache[k] = &mdTreeEntry{kids: kids, nodes: n, at: mdTreeSeq}
+	mdTreeTotal += n
+}
+
+// mdTreeCacheClear 清空渲染树缓存（单测 / 主题彻底切换时用）。
+func mdTreeCacheClear() {
+	mdTreeCache = map[mdTreeKey]*mdTreeEntry{}
+	mdTreeTotal = 0
+}
 
 // mdDropTreeCache 丢弃某个窗口的渲染树缓存（窗口销毁时调用）。
 // 缓存键里有 *App，不清掉会让已关闭窗口的节点树与 App 一直常驻。
@@ -692,10 +747,14 @@ func mdDropTreeCache(a *App) {
 	if a == nil || len(mdTreeCache) == 0 {
 		return
 	}
-	for k := range mdTreeCache {
+	for k, e := range mdTreeCache {
 		if k.app == a {
+			mdTreeTotal -= e.nodes
 			delete(mdTreeCache, k)
 		}
+	}
+	if mdTreeTotal < 0 {
+		mdTreeTotal = 0
 	}
 }
 
@@ -855,7 +914,7 @@ func (r *mdRenderer) mathBlock(b *mdBlock) *Node {
 	).St(St().R(10).BgC(mdColBgSoft).Stroke(1, mdColBorder))
 }
 
-// mermaid 图表块：GoGUI 没有 JS 运行环境，降级为「图表提示卡」，
+// mermaid 图表块：GUIS 没有 JS 运行环境，降级为「图表提示卡」，
 // 展示图类型、行数与源码（可复制），并提示到浏览器版本查看。
 func (r *mdRenderer) mermaid(b *mdBlock) *Node {
 	kind, desc := mdMermaidKind(b.Code)
@@ -1372,7 +1431,7 @@ func (r *mdRenderer) codeLine(spans []mdHLSpan, maxW float32, mono string, size,
 			f := mdFont(size, 400, mono)
 			var adv float32
 			if f != nil {
-				adv = f.GlyphFor(ch).Advance / f.Scale()
+				adv = f.Advance(ch)
 			}
 			if x+adv > maxW && (len(cur) > 0 || len(buf) > 0) {
 				flushBuf()
@@ -1581,7 +1640,7 @@ func (r *mdRenderer) imageNode(src, alt, captionColor string) *Node {
 
 // imagePlaceholder 无法显示的图片 → 占位卡（区分「下载中 / 失败 / 非本地路径」）。
 func (r *mdRenderer) imagePlaceholder(src, alt string) *Node {
-	hint := "GoGUI 仅支持本地图片（PNG / JPEG / GIF / BMP）"
+	hint := "GUIS 仅支持本地图片（PNG / JPEG / GIF / BMP）"
 	icon := "🖼"
 	if mdIsRemote(src) {
 		switch {
@@ -2020,7 +2079,7 @@ func (r *mdRenderer) media(b *mdBlock) *Node {
 				Text(b.URL).St(St().Text(r.base.size-2, 400, mdColMuted).WrapOn()),
 			).Grow(1).St(St().GapOf(2)),
 		).St(St().GapOf(10)).AlignTo(AlignCenter),
-		Text("GoGUI 版以占位展示；播放入口：ui.VideoPlayer / ui.MusicPlayer").St(St().Text(r.base.size-2, 400, mdColMuted).WrapOn()),
+		Text("GUIS 版以占位展示；播放入口：ui.VideoPlayer / ui.MusicPlayer").St(St().Text(r.base.size-2, 400, mdColMuted).WrapOn()),
 	).St(St().Padding(14).R(10).BgC(mdColBgSoft).Stroke(1, mdColBorder).GapOf(8))
 	return col
 }

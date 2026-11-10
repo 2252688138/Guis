@@ -1,14 +1,14 @@
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 // Package version 是应用版本号的唯一来源。
 //
 // 版本号写在仓库根目录的 VERSION 文件里（一行，语义化版本 x.y.z），
 // 由 build.ps1 读取后通过链接期变量注入：
 //
-//	go build -ldflags "-X gogui/internal/version.Number=1.2.3 -X gogui/internal/version.Commit=abc1234 ..."
+//	go build -ldflags "-X guis/internal/version.Number=1.2.3 -X guis/internal/version.Commit=abc1234 ..."
 //
 // 未走构建脚本时（go run / go test / IDE）使用本文件里的默认值，
 // 因此业务代码只依赖 version.Number，不需要自己解析 VERSION 文件。
@@ -27,13 +27,13 @@ var (
 	// Number 语义化版本号 x.y.z，可带预发布后缀（如 1.2.0-rc1）。
 	Number = "0.1.0"
 	// Product 产品名：exe 文件属性、安装器、关于窗口共用同一份。
-	Product = "GoGUI"
+	Product = "GUIS"
 	// Company 公司 / 作者，写入 exe 文件属性的「公司」项。
-	Company = "Go-gui"
+	Company = "guis"
 	// Copyright 版权声明，写入 exe 文件属性与安装器。
 	Copyright = "Copyright (c) 2026 Mr.Shu"
 	// Description 文件说明（exe 属性里的「文件说明」）。
-	Description = "GoGUI 纯 Go 自绘 GUI 框架"
+	Description = "GUIS 纯 Go 自绘 GUI 框架"
 	// Commit 构建时的 git 提交短哈希，未取到为 none。
 	Commit = "none"
 	// BuildTime 构建时间（UTC，RFC3339），未注入为 unknown。

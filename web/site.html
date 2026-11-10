@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GUIS · 用纯 Go 构建跨平台界面</title>
+<meta name="description" content="GUIS 是一套纯 Go、零 cgo 的跨平台自绘 GUI 框架：一份界面代码编译到 Windows、Linux、macOS、WebAssembly 与 Android。">
+<meta name="theme-color" content="#05070e">
+<script>
+/* 诊断：把 console 输出与未捕获错误收集到 window.__logs（页面出问题时可直接读取） */
+window.__logs=[];
+(function(){var ce=console.error,cl=console.log,cw=console.warn;
+console.error=function(){try{window.__logs.push('E:'+Array.prototype.join.call(arguments,' '))}catch(e){};ce.apply(console,arguments)};
+console.warn=function(){try{window.__logs.push('W:'+Array.prototype.join.call(arguments,' '))}catch(e){};cw.apply(console,arguments)};
+console.log=function(){try{window.__logs.push('L:'+Array.prototype.join.call(arguments,' '))}catch(e){};cl.apply(console,arguments)};
+window.addEventListener('error',function(e){window.__logs.push('X:'+(e.message||e.error))});
+})();
+</script>
+<script>
+/* 诊断（?stats=1）：统计 WebGL 绘制调用次数，并标记绘制是否发生在 rAF 回调内。
+   若大量绘制落在 rAF 之外，浏览器合成器可能在「清屏后、画完前」抓到中间帧 → 视觉闪烁。 */
+window.__rafIn = false;
+(function () {
+  var oraf = window.requestAnimationFrame;
+  window.requestAnimationFrame = function (cb) {
+    return oraf.call(window, function (t) {
+      window.__rafIn = true;
+      try { return cb(t); } finally { window.__rafIn = false; }
+    });
+  };
+})();
+
+if (location.search.indexOf('stats=1') >= 0) {
+  var og = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (t, a) {
+    var c = og.call(this, t, a);
+    if (c && !c.__cnt && (t === 'webgl2' || t === 'webgl')) {
+      c.__cnt = 1;
+      ['clear', 'drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced'].forEach(function (fn) {
+        var f = c[fn];
+        if (typeof f === 'function') {
+          c[fn] = function () { window.__draw = (window.__draw || 0) + 1; if (window.__rafIn) { window.__drawIn = (window.__drawIn || 0) + 1; } else { window.__drawOut = (window.__drawOut || 0) + 1; } return f.apply(this, arguments); };
+        }
+      });
+    }
+    return c;
+  };
+}
+</script>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #05070e; color: #eaf1ff;
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    /* 移动端：手势全部交给画布里的自绘 UI。
+       overscroll-behavior 关掉浏览器下拉刷新 / 回弹，touch-action:none 关掉
+       双击缩放与页面级滑动，避免和框架合成的拖动滚动抢手势。 */
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  #screen { display: block; width: 100vw; height: 100vh; outline: none; touch-action: none; }
+  /* 启动提示层：用与站内底色完全相同的背景（#05070e），所以不会出现「白屏 → 加载屏 → 界面」
+     的两次闪烁；只是把本来一片纯黑的等待期变成「有进度感」的等待。
+     首帧出现后（window.__guisFrames > 0）淡出、再 display:none，不参与任何布局。 */
+  #boot {
+    position: fixed; inset: 0; z-index: 8;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    padding: 28px 20px; overflow-y: auto; text-align: center;
+    /* 静态首屏：不请求任何外部资源（字体/图片），HTML 一到就能看见，
+       弱网下 wasm 还在下的时候用户看到的是真内容而不是黑屏或一行小字。 */
+    background: radial-gradient(120% 80% at 50% -12%, #10233b 0%, #05070e 58%);
+    transition: opacity .28s ease;
+  }
+  #boot.hide { opacity: 0; pointer-events: none; }
+  .sr-hero { width: 100%; max-width: 660px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  /* API 深链接（?page=api）不需要营销首屏，只留加载指示 */
+  html.api-mode .sr-hero { display: none; }
+  .sr-brand { display: flex; align-items: center; gap: 10px; }
+  .boot-mark {
+    width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center;
+    background: linear-gradient(140deg, #3b82f6, #22d3ee); color: #04101f;
+    font: 700 24px/1 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    box-shadow: 0 12px 30px rgba(56, 189, 248, .34);
+  }
+  .sr-name { color: #eaf1ff; font: 700 20px/1 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; letter-spacing: .6px; }
+  .sr-title {
+    margin: 2px 0 0; color: #eaf1ff; letter-spacing: -.5px;
+    font: 700 clamp(26px, 7vw, 44px)/1.18 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  .sr-title b { display: block; color: #7ff0ff; font-weight: 700; }
+  .sr-sub {
+    margin: 0; max-width: 560px; color: #93a6c4;
+    font: 400 clamp(13px, 3.6vw, 15px)/1.75 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  .sr-points { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 10px; justify-content: center; }
+  .sr-points li {
+    color: #c8d6ef; padding: 7px 11px; border-radius: 999px;
+    background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .10);
+    font: 500 12px/1 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  .sr-cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center; margin-top: 4px; }
+  .sr-btn {
+    display: inline-block; padding: 11px 18px; border-radius: 11px; text-decoration: none;
+    background: linear-gradient(100deg, #6366f1, #22d3ee); color: #04101f;
+    font: 700 13px/1 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    box-shadow: 0 10px 24px rgba(34, 211, 238, .3);
+  }
+  .boot-text { color: #93a6c4; font: 13px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; letter-spacing: .3px; }
+  .boot-text b { color: #eaf1ff; font-weight: 600; }
+  .boot-bar { width: 190px; height: 3px; border-radius: 2px; background: #142339; overflow: hidden; }
+  .sr-hint { margin: 0; max-width: 430px; color: #5d6f8c; font: 11.5px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  .boot-bar i {
+    display: block; width: 38%; height: 100%; border-radius: 2px;
+    background: linear-gradient(90deg, #3b82f6, #22d3ee);
+    animation: bootSlide 1.15s ease-in-out infinite;
+  }
+  @keyframes bootSlide { 0% { transform: translateX(-110%); } 100% { transform: translateX(300%); } }
+  @media (prefers-reduced-motion: reduce) { .boot-bar i { animation: none; width: 60%; } }
+  #err {
+    position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 9; display: none;
+    white-space: pre-wrap; color: #ffb4b4; font: 12px/1.55 ui-monospace, Consolas, monospace;
+    background: #1b0d14ee; border: 1px solid #5b2436; border-radius: 12px; padding: 12px 14px;
+    max-height: 45vh; overflow: auto;
+  }
+</style>
+<link rel="icon" href="data:,">
+</head>
+<body>
+<canvas id="screen" tabindex="0"></canvas>
+<div id="err"></div>
+<script>
+/* 提前发起 main.wasm 请求（比 wasm_exec.js 的加载更早），全程只下这一次：
+   以前用 <link rel=preload as=fetch>，浏览器会把它当成「另一个请求」——流式编译一旦
+   回退（例如瞬时 Content-Type/流问题），JS 里的 fetch 就重新下一遍，服务器日志里会看到
+   两条 main.wasm（其中一条 3.65MB gzip、耗时 1.7s），白花 1MB+ 流量。
+   现在自己拿住这个 Promise，启动脚本直接用它，并且 clone 一份做 buffer 回退，不重复下载。 */
+window.__guisWasmFetch = fetch('main.wasm', { priority: 'high' });
+</script>
+<!-- 静态首屏：HTML 一到就能看见标题与卖点（不依赖 wasm / 网络字体 / 图片）。
+     wasm 首帧出现后整层淡出，由 canvas 里的自绘页面无缝接管；
+     弱网时（本次实测线上 2.69MB br 只有约 110KB/s）用户看到的是真内容，
+     而不是长时间的一行「正在加载」。 -->
+<div id="boot" role="status" aria-live="polite">
+  <div class="sr-hero">
+    <div class="sr-brand">
+      <div class="boot-mark">G</div>
+      <div class="sr-name">GUIS</div>
+    </div>
+    <h1 class="sr-title">用纯 Go 构建跨平台界面<b>零 cgo，一份代码跑到所有平台</b></h1>
+    <p class="sr-sub">自绘 GPU 界面框架：Windows / Linux / macOS / WebAssembly / Android 共用一套声明式 UI 代码，无 HTML、无 JS 框架、无 WebView 依赖。</p>
+    <ul class="sr-points">
+      <li>纯 Go · 零 cgo</li>
+      <li>WebGL 自绘渲染</li>
+      <li>一份代码多端</li>
+      <li>内置组件与主题</li>
+    </ul>
+    <div class="sr-cta">
+      <a class="sr-btn" href="https://github.com/2252688138/Go-gui" rel="noopener">在 GitHub 上查看</a>
+    </div>
+  </div>
+  <div class="boot-text" id="boot-text">正在<b>加载</b>内核…</div>
+  <div class="boot-bar"><i></i></div>
+  <p class="sr-hint" id="boot-hint">交互版由 WebAssembly 驱动：压缩后约 2.7MB，解压后约 11MB，加载完自动切换（弱网需十几秒）。</p>
+</div>
+<script>
+/* 字体预取：
+   - font.ttf（首屏子集，约 0.19MB）高优先级，与 main.wasm 同时下载，Go 启动时直接取；
+   - font-full.ttf（全站字体，约 0.30MB）与 font-bold.ttf 用**低优先级**在后台异步下载：
+     Promise 不 await，不抢 wasm/首屏子集的带宽，也不会阻塞主页任何加载与交互。
+   guis 侧（ui/boot_wasm.go: registerFont）优先读 window.__guisFonts。 */
+window.__guisFonts = {};
+window.__guisFontState = {};      // 文件名 -> loading / ready / error（诊断用）
+window.__guisFontPromises = {};  // 文件名 -> Promise<Uint8Array|null>（同一份只下一遍）
+window.__guisFontStage = 'subset';
+window.__guisFetchFont = function (name, opts) {
+  if (window.__guisFonts[name]) return Promise.resolve(window.__guisFonts[name]);
+  if (window.__guisFontPromises[name]) return window.__guisFontPromises[name];
+  window.__guisFontState[name] = 'loading';
+  var p = fetch(name, opts || {}).then(function (r) { return r.ok ? r.arrayBuffer() : null; })
+    .then(function (b) {
+      if (!b || !b.byteLength) { window.__guisFontState[name] = 'error'; return null; }
+      var u8 = new Uint8Array(b);
+      var base = name.split('?')[0];
+      window.__guisFonts[name] = u8;                     // 带 ?v=hash 的键
+      window.__guisFonts[base] = u8;                     // 原始文件名键（Go 侧用这个）
+      window.__guisFontState[name] = 'ready';
+      window.__guisFontState[base] = 'ready';
+      return u8;
+    })
+    .catch(function () { window.__guisFontState[name] = 'error'; return null; });
+  window.__guisFontPromises[name] = p;
+  return p;
+};
+// 首屏只等这份子集；priority 提示浏览器优先于下面的全量字体。
+// 深链接直达 API 文档（?page=api）时这页正文全在 docs/ 里，子集覆盖不到：
+// 把全量字体提到高优先级，启动前会等它（最多 1.5s，见下面的 wasm 启动脚本）。
+var __deepAPI = location.search.indexOf('page=api') >= 0;
+// API 页不需要营销首屏：解析阶段就标记，避免静态 hero 闪一下再隐掉
+if (__deepAPI) document.documentElement.className += ' api-mode';
+window.__guisFetchFont('font.ttf', { priority: 'high' });
+window.__guisFetchFont('font-full.ttf', { priority: __deepAPI ? 'high' : 'low' });
+</script>
+<script src="wasm_exec.js"></script>
+<script>
+(async () => {
+  const errBox = document.getElementById('err');
+  const t0 = performance.now();
+
+  // ---- 启动提示：与站内底色同色，首帧出现后淡出 ----
+  // 以前这块就是一片纯黑（能避免白闪，但慢网/低端机上用户会以为卡死）。
+  // 这里只加一个纯 HTML/CSS 的提示层，不依赖字体与图片，不参与布局。
+  const bootEl = document.getElementById('boot');
+  const bootText = document.getElementById('boot-text');
+  let bootStage = '下载内核';
+  let bootDetail = '';
+  let bootDone = false;
+  const bootStart = performance.now();
+  const bootHint = document.getElementById('boot-hint');
+  const renderBoot = () => {
+    if (!bootText || bootDone) return;
+    const sec = ((performance.now() - bootStart) / 1000).toFixed(1);
+    bootText.innerHTML = '正在<b>' + bootStage + '</b>' + (bootDetail || '…') + ' · ' + sec + 's';
+  };
+  const setBoot = (s) => { if (bootStage !== s) { bootStage = s; renderBoot(); } };
+  const bootTimer = setInterval(renderBoot, 200);
+  const bootHide = () => {
+    if (bootDone) return;
+    bootDone = true;
+    clearInterval(bootTimer);
+    if (bootEl) {
+      bootEl.classList.add('hide');
+      setTimeout(() => { bootEl.style.display = 'none'; }, 320);
+    }
+  };
+  // 首次出现就淡出；期间把 Go 侧启动阶段映射成人话。
+  let bootSlow = false;
+  const bootWatch = setInterval(() => {
+    if ((window.__guisFrames || 0) > 0) { clearInterval(bootWatch); bootHide(); return; }
+    if (window.__guisStage === 'font') setBoot('准备字体');
+    // 弱网提示：静态首屏已经可读，这里只把「还差多少」说清楚，不宣称卡死
+    if (!bootSlow && performance.now() - t0 > 8000) {
+      bootSlow = true;
+      if (bootHint) bootHint.textContent = '网络较慢：交互内核约 2.7MB（已压缩），下载完成后自动切换，本页内容可先阅读。';
+    }
+  }, 60);
+  renderBoot();
+
+  const showErr = (msg) => {
+    bootHide();
+    errBox.style.display = 'block';
+    errBox.textContent = String(msg && msg.stack ? msg.stack : msg);
+  };
+  window.addEventListener('error', (e) => showErr(e.message || e.error));
+  window.addEventListener('unhandledrejection', (e) => showErr(e.reason));
+
+  // 安静看门狗：DDL 较长（25s）仍无首帧时只补一句状态，**不改**主文案：
+  // 以前这里直接 setBoot，会把「正在下载 7.3MB」盖成「连接较慢」，
+  // 用户就再也看不到真实进度与秒数了。
+  const watchdog = setInterval(() => {
+    if ((window.__guisFrames || 0) > 0) { clearInterval(watchdog); return; }
+    if (performance.now() - t0 < 25000) return;
+    clearInterval(watchdog);
+    window.__guisStalled = true;
+    if (bootHint) bootHint.textContent = '网络较慢：仍在下载/解析交互内核（压缩后约 2.7MB，解压后约 11MB），完成后自动切换。';
+    console.warn('[guis] 25s 内没有输出首帧（窗口被遮挡 / 后台标签会暂停 rAF，' +
+                 '已由 setTimeout 兜底驱动；检查 window.__logs）');
+  }, 500);
+
+  try {
+    if (typeof Go === 'undefined') throw new Error('wasm_exec.js 未加载 / missing wasm_exec.js');
+    setBoot('下载内核');
+    // 深链接直达 API 文档：最多等 1.5s 让全量字体到货（Go 启动时直接把它当主字体）。
+    // 首页不走这段，首屏永远只等子集。
+    if (location.search.indexOf('page=api') >= 0 && typeof window.__guisFetchFont === 'function') {
+      await Promise.race([
+        window.__guisFetchFont('font-full.ttf'),
+        new Promise(function (r) { setTimeout(r, 1500); }),
+      ]);
+      if (window.__guisFontState['font-full.ttf'] === 'ready') window.__guisFontStage = 'full-boot';
+    }
+    const go = new Go();
+    let result;
+    // 用头部提前发起的那次请求，只下一次网络；失败时用同一 URL 重取，走浏览器缓存不重复下载。
+    const wasmURL = 'main.wasm';
+    const resp = await (window.__guisWasmFetch || fetch(wasmURL, { priority: 'high' }));
+    if (!resp || !resp.ok) throw new Error('main.wasm 下载失败：HTTP ' + (resp && resp.status));
+    // 下载进度：只报「已接收多少」（解压后）。不能用 content-length 算百分比：
+    // 它量的是压缩后体积（约 2.7MB），而 fetch 的 body 已解压（约 11MB），
+    // 两者一除就会早早显示 100% 然后干等（线上真实出现过「100%（7.3 / 2.6 MB）」）。
+    // 下完的那一刻（reader.done）才切到「解析内核」，阶段才不会骗人。
+    try {
+      const probe = resp.clone();
+      if (probe.body && probe.body.getReader) {
+        const reader = probe.body.getReader();
+        let got = 0;
+        (async () => {
+          for (;;) {
+            const r = await reader.read();
+            if (r.done) {
+              bootDetail = '';
+              setBoot('解析内核');
+              break;
+            }
+            got += (r.value && r.value.byteLength) || 0;
+            bootDetail = ' · 已接收 ' + (got / 1048576).toFixed(1) + ' MB';
+            renderBoot();
+          }
+        })().catch(function () {});
+      }
+    } catch (e) { /* 进度只是锦上添花，失败不影响主流程 */ }
+    try {
+      result = await WebAssembly.instantiateStreaming(resp, go.importObject);
+      setBoot('初始化界面');
+    } catch (e) {
+      // 同一 URL 带内容哈希（?v=…）且响应 immutable：这次重取是内存命中原响应，
+      // 服务器不会再发一遍，也不会白花 1MB+ 流量。
+      console.warn('[guis] 流式编译失败，改用已缓存字节：', e && e.message);
+      result = await WebAssembly.instantiate(await (await fetch(wasmURL, { cache: 'force-cache' })).arrayBuffer(), go.importObject);
+    }
+    setBoot('初始化界面');
+    go.run(result.instance).catch(showErr);
+  } catch (e) { showErr(e); }
+})();
+</script>
+<script>
+/* 全站字体：后台异步预载 + 首帧后热注入。
+   1) 首屏只用 font.ttf（子集）；font-full.ttf / font-bold.ttf 在后台用低优先级
+      fetch（不 await、不进首屏关键路径），不阻塞主页任何加载与交互；
+   2) 首帧画出来之后（window.__guisFrames > 0）才 __guisAddFont('GUISWeb', …)：
+      Go 侧会丢弃字体实例并重排重绘（ui/web_font_wasm.go: HotAddFont），放在首帧后
+      不会拖慢首屏；
+   3) 数据到了就注入，不再等 requestIdleCallback：正常网络下首页刚出首帧全量字体就已到货，
+      所以点「API 文档」时用的就是完整字体；
+   4) 粗体在常规字重注入 300ms 后跟进，避免同一帧连续重建两次字形图集。
+   降级：任一步失败都不影响首屏，继续用已注入的字体，只记诊断到
+   window.__guisFontStage / __guisFontState。 */
+(function () {
+  var FULL = 'font-full.ttf', BOLD = 'font-bold.ttf';
+  var done = { full: false, bold: false };
+  // 调试开关 ?fullfont=0：不预载全站字体（只留首屏子集），
+  // 用于对比两次渲染、确认真的是字在热注入后变了。
+  if (location.search.indexOf('fullfont=0') >= 0) {
+    window.__guisFontStage = 'subset-disabled';
+    return;
+  }
+
+  // 后台异步预取：低优先级，Promise 不 await，主页加载完全不经过它。
+  var pending = {};
+  pending[FULL] = window.__guisFetchFont(FULL, { priority: 'low' });
+  pending[BOLD] = window.__guisFetchFont(BOLD, { priority: 'low' });
+
+  // 注入一份字体：等「Go 钩子就绪 + 数据到货」，最多等 15s（wasm 启动失败时不死循环）。
+  function inject(family, name, flag, stage, next) {
+    pending[name].then(function (buf) {
+      if (done[flag]) return;
+      var tries = 0;
+      (function tryPush() {
+        if (done[flag]) return;
+        if (buf && typeof window.__guisAddFont === 'function') {
+          done[flag] = true;
+          window.__guisAddFont(family, buf);
+          window.__guisFontStage = stage;
+          if (next) setTimeout(next, 300);   // 错开两次字体重建
+          return;
+        }
+        if ((!buf || window.__guisFontState[name] === 'error') && tries++ > 20) {
+          done[flag] = true;                 // 拉取失败：保持现有字体
+          if (flag === 'full') window.__guisFontStage = 'subset-only';
+          if (next) setTimeout(next, 0);
+          return;
+        }
+        if (tries++ > 300) return;           // 钩子一直没出现（wasm 没起来）
+        setTimeout(tryPush, 100);
+      })();
+    });
+  }
+
+  // 首帧之后启动注入链：先全量常规字重，再全站粗体。
+  // 深链接直达 API（?page=api）时 Go 已经拿全量字体当主字体启动（stage=full-boot），
+  // 这时不用再重建一次，直接注入粗体。
+  var wait = setInterval(function () {
+    if ((window.__guisFrames || 0) === 0) return;
+    clearInterval(wait);
+    var bootFull = window.__guisFontStage === 'full-boot';
+    if (bootFull) done.full = true;
+    var injectBold = function () {
+      inject('GUISWeb/Bold', BOLD, 'bold', 'full+bold', null);
+    };
+    if (bootFull) {
+      window.__guisFontStage = 'full';
+      setTimeout(injectBold, 0);
+    } else {
+      inject('GUISWeb', FULL, 'full', 'full', injectBold);
+    }
+  }, 40);
+})();
+</script>
+</body>
+</html>

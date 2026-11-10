@@ -1,9 +1,9 @@
 //go:build windows
 
-// Go-gui
+// guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
-// QQ Group: 点击链接加入群聊【Go-gui】：https://qm.qq.com/q/Be12Z5MVJ6
+// QQ Group: 点击链接加入群聊【guis】：https://qm.qq.com/q/Be12Z5MVJ6
 
 package ui
 
@@ -12,9 +12,9 @@ import (
 	"math"
 	"strings"
 
-	"gogui/internal/geom"
-	"gogui/internal/gpu"
-	"gogui/internal/win32"
+	"guis/internal/geom"
+	"guis/internal/gpu"
+	"guis/internal/win32"
 )
 
 // WebView 内嵌浏览器节点（系统 WebView2 / Edge 内核）。
@@ -23,7 +23,7 @@ import (
 // 自己的子窗口上，子窗口位置 = 节点矩形（按 DPI 换算成物理像素），
 // 因此：
 //   - 帧率与交互是浏览器原生的，网页里的滚动、输入法、视频、canvas 全部真实可用；
-//   - 但网页像素不经过 GoGUI 的 OpenGL 批次，**无法**被自绘内容裁剪 / 圆角 / 覆盖。
+//   - 但网页像素不经过 GUIS 的 OpenGL 批次，**无法**被自绘内容裁剪 / 圆角 / 覆盖。
 //
 // 想让它像普通控件一样被裁剪、圆角、被菜单盖住，需要升级到 DirectComposition
 // 合成（B 阶段，见 COMPONENTS.md 的 roadmap）。
@@ -47,7 +47,7 @@ type WebViewOptions struct {
 	URL string
 	// HTML 直接加载 HTML（优先于 URL，适合离线页面 / 自绘模板）。
 	HTML string
-	// UserDataDir 用户数据目录（cookie / 缓存），空 = %LOCALAPPDATA%\GoGUI\WebView2。
+	// UserDataDir 用户数据目录（cookie / 缓存），空 = %LOCALAPPDATA%\GUIS\WebView2。
 	UserDataDir string
 	// Zoom 初始缩放（1 = 100%）。
 	Zoom float64
