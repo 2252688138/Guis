@@ -42,6 +42,12 @@ Go 写桌面程序，绕不开三条路：
 
 ![浅色主题](https://raw.githubusercontent.com/2252688138/guis/main/ui/assets/%E6%B5%85%E8%89%B2%E4%B8%BB%E9%A2%98.png)
 
+![伪终端组件](https://raw.githubusercontent.com/2252688138/guis/main/ui/assets/%E4%BC%AA%E7%BB%88%E7%AB%AF%E7%BB%84%E4%BB%B6.png)
+
+![代码编辑器](https://raw.githubusercontent.com/2252688138/guis/main/ui/assets/%E7%BC%96%E8%BE%91%E5%99%A8%E7%BB%84%E4%BB%B6.png)
+
+![图标渲染](https://raw.githubusercontent.com/2252688138/guis/main/ui/assets/%E5%9B%BE%E6%A0%87%E6%B8%B2%E6%9F%93.png)
+
 这些界面里没有 HTML、没有 CSS、没有 WebView 参与主体渲染，全部是 OpenGL 画的。
 
 最小可运行程序：
@@ -880,9 +886,9 @@ HWND 托管模式下，网页像素不进入 GL 批次，所以：
 | 安装器 | `makensis /DVERSION=...` | 「应用和功能」里的版本 |
 
 ```go
-version.String()   // v0.1.0
-version.Title()    // GUIS v0.1.0（窗口标题）
-version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
+version.String()   // v1.2.0
+version.Title()    // GUIS v1.2.0（窗口标题）
+version.Full()     // v1.2.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 ```
 
 ### 12.2 安装器支持两种范围
@@ -895,8 +901,8 @@ version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 静默安装：
 
 ```powershell
-GUIS-0.1.0-setup.exe /S /currentuser /D=D:\Apps\GUIS
-GUIS-0.1.0-setup.exe /S /allusers
+GUIS-1.2.0-setup.exe /S /currentuser /D=D:\Apps\GUIS
+GUIS-1.2.0-setup.exe /S /allusers
 ```
 
 `/D` 必须是最后一个参数，路径不加引号。

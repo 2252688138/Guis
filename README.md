@@ -46,6 +46,13 @@
     <td width="50%" valign="top"><img src="ui/assets/系统操作.png" alt="系统能力"><br><sub><b>系统能力</b> · 图片 / 拖入文件 / 毛玻璃 / Emoji / 动画 / 输入法</sub></td>
   </tr>
   <tr>
+    <td width="50%" valign="top"><img src="ui/assets/伪终端组件.png" alt="伪终端"><br><sub><b>伪终端</b> · ConPTY / ptmx 真终端 / ANSI 彩色 / 选中复制 / 尺寸自适应</sub></td>
+    <td width="50%" valign="top"><img src="ui/assets/编辑器组件.png" alt="代码编辑器"><br><sub><b>代码编辑器</b> · 语法高亮 / 行号 / 查找替换 / 悬停提示 / LSP</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" width="100%" valign="top"><img src="ui/assets/图标渲染.png" alt="图标渲染"><br><sub><b>图标渲染</b> · 内置矢量图标库（24×24 SVG path）/ 任意尺寸抗锯齿 / 颜色与线宽可编程</sub></td>
+  </tr>
+  <tr>
     <td width="50%" valign="top"><img src="ui/assets/浅色主题.png" alt="浅色主题"><br><sub><b>浅色主题</b> · <code>ui.UseTheme(ui.ThemeLight)</code> 一键切换，组件与图表同步换肤</sub></td>
     <td width="50%" valign="top"><i>以上界面全部由 OpenGL 自绘：无 HTML、无 CSS、无 WebView 参与主体渲染。<br>运行 <code>go run ./cmd/gallery</code> 可逐页查看。</i></td>
   </tr>
@@ -57,6 +64,7 @@
 
 | 方向 | 新增 / 修复 |
 |---|---|
+| 版本 / 文档 | 版本号升至 **v1.2.0**；界面预览补齐**伪终端**、**代码编辑器**、**图标渲染**三张真机截图（1180×760） |
 | 办公文档 | 新增 `internal/office`（零依赖 xlsx / docx / pdf 读写，含 TrueType 字体子集嵌入）与 `ui/office.go`（工作表 / 文档流 / PDF 页面渲染 + 打印 + `ExportPDF`），gallery 新增「办公文档」页 |
 | 列表组件 | `FileTree` 文件树（缩进层级 / 展开折叠 / 选中高亮，展开态按 Key 记忆、折叠子树不建节点）、`MediaCard` 图文卡片（封面 / 角标 / 评分 / 标题 / 标签 / 操作按钮）、`ListRows` 列表行（图标 / 标题 / 副标题 / 右侧标签，支持多选与分隔线）、`PostCard` 社区帖子、`Pager` 数字分页（省略号折叠 + 上锁页禁用） |
 | 示例页 | 「列表与表格」页改为**页内下划线页签**：列表（文件树 / 图文卡片 / 列表 / 社区帖子 / 分页）、表格（数据表格 / 聊天 / 虚拟列表 / 拖拽重排 / 三态），切换时滚动位置互不干扰 |
@@ -169,9 +177,9 @@ go build -ldflags "-H=windowsgui" -o app.exe ./cmd/gallery
 版本号只有一处来源：仓库根目录的 `VERSION.txt`（语义化版本 `x.y.z`）。
 
 ```powershell
-./build.ps1 -Bump patch        # 0.1.0 -> 0.1.1，并写回 VERSION.txt
-./build.ps1 -Bump minor        # 0.1.0 -> 0.2.0
-./build.ps1 -Bump major        # 0.1.0 -> 1.0.0
+./build.ps1 -Bump patch        # 1.2.0 -> 1.2.1，并写回 VERSION.txt
+./build.ps1 -Bump minor        # 1.2.0 -> 1.3.0
+./build.ps1 -Bump major        # 1.2.0 -> 2.0.0
 ./build.ps1 -Channel release   # 标记正式通道（默认 dev，exe 属性里会体现）
 ```
 
@@ -188,15 +196,15 @@ go build -ldflags "-H=windowsgui" -o app.exe ./cmd/gallery
 ```go
 import "guis/internal/version"
 
-version.String()   // v0.1.0
-version.Title()    // GUIS v0.1.0（gallery 窗口标题就用它）
-version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
+version.String()   // v1.2.0
+version.Title()    // GUIS v1.2.0（gallery 窗口标题就用它）
+version.Full()     // v1.2.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 ```
 
 ## 安装器（NSIS 3）
 
 ```powershell
-./build.ps1 -Installer                   # -> dist\GUIS-0.1.0-setup.exe
+./build.ps1 -Installer                   # -> dist\GUIS-1.2.0-setup.exe
 ./build.ps1 -Installer -Upx              # 先 UPX 压 exe，再打包
 ./build.ps1 -Installer -Channel release  # 正式通道（exe 属性与安装包注释同步标注）
 ./build.ps1 -Bump patch -Installer       # 版本号 +1 后打包
@@ -218,8 +226,8 @@ version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 
 ```powershell
 # 安装（/D 必须是最后一个参数，路径不加引号）
-GUIS-0.1.0-setup.exe /S /currentuser /D=D:\Apps\GUIS
-GUIS-0.1.0-setup.exe /S /allusers              # 需已提权，否则返回码 5
+GUIS-1.2.0-setup.exe /S /currentuser /D=D:\Apps\GUIS
+GUIS-1.2.0-setup.exe /S /allusers              # 需已提权，否则返回码 5
 
 # 卸载
 "%LOCALAPPDATA%\Programs\GUIS\uninstall.exe" /S
@@ -254,7 +262,7 @@ GUIS-0.1.0-setup.exe /S /allusers              # 需已提权，否则返回码 
 
 ```powershell
 go run ./tools/winres -arch amd64 -ico ui/assets/icon.ico `
-  -version 0.1.0 -product GUIS -company guis `
+  -version 1.2.0 -product GUIS -company guis `
   -desc "GUIS 纯 Go 自绘 GUI 框架" -copyright "Copyright (c) 2026 Mr.Shu" `
   -commit 1a2b3c4 -channel release -out cmd/gallery/rsrc_windows_amd64.syso
 ```

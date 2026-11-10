@@ -2310,6 +2310,22 @@ func TextGlyphBounds(s string, size float32, weight int32) (top, h float32) {
 	return textGlyphBoundsOf(a.fonts.getFamily(size, weight, ""), s)
 }
 
+// TextLineHeight 返回单行文本的行高（默认行距，逻辑像素）；取不到字体时返回 0。
+//
+// 和 TextGlyphBounds 配合即可把图标对齐到文字：文字盒子按行高居中，
+// 而墨迹中心比盒心高一两像素，图标只按盒子居中的话看起来总是偏下。
+func TextLineHeight(size float32, weight int32) float32 {
+	a := currentApp.Load()
+	if a == nil || a.fonts == nil {
+		return 0
+	}
+	f := a.fonts.getFamily(size, weight, "")
+	if f == nil {
+		return 0
+	}
+	return f.LineHeight
+}
+
 // textGlyphBoundsOf 按字体计算单行文本相对行顶的视觉包围盒（逻辑像素）。
 func textGlyphBoundsOf(f *text.Font, s string) (top, h float32) {
 	if f == nil {

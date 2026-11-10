@@ -25,7 +25,7 @@ import (
 // 以下变量由 -ldflags -X 在构建期覆盖，业务代码只读不写。
 var (
 	// Number 语义化版本号 x.y.z，可带预发布后缀（如 1.2.0-rc1）。
-	Number = "0.1.0"
+	Number = "1.2.0"
 	// Product 产品名：exe 文件属性、安装器、关于窗口共用同一份。
 	Product = "GUIS"
 	// Company 公司 / 作者，写入 exe 文件属性的「公司」项。

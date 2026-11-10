@@ -43,6 +43,13 @@ Real running screenshots (1180×760, dark theme). Image files live in [`ui/asset
     <td width="50%" valign="top"><img src="ui/assets/系统操作.png" alt="System features"><br><sub><b>System features</b> · images / drag-drop / backdrop blur / emoji / IME</sub></td>
   </tr>
   <tr>
+    <td width="50%" valign="top"><img src="ui/assets/伪终端组件.png" alt="Pseudo terminal"><br><sub><b>Pseudo terminal</b> · real shell over ConPTY / ptmx / ANSI colors / selection copy / resize</sub></td>
+    <td width="50%" valign="top"><img src="ui/assets/编辑器组件.png" alt="Code editor"><br><sub><b>Code editor</b> · syntax highlight / line numbers / find &amp; replace / hover / LSP</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" width="100%" valign="top"><img src="ui/assets/图标渲染.png" alt="Icon rendering"><br><sub><b>Icon rendering</b> · built-in vector icon set (24×24 SVG paths) / resolution independent / programmatic color and stroke</sub></td>
+  </tr>
+  <tr>
     <td width="50%" valign="top"><img src="ui/assets/浅色主题.png" alt="Light theme"><br><sub><b>Light theme</b> · one call to <code>ui.UseTheme(ui.ThemeLight)</code> re-skins widgets and charts</sub></td>
     <td width="50%" valign="top"><i>Everything above is drawn by OpenGL — no HTML, no CSS, no WebView involved in the main rendering path.<br>Run <code>go run ./cmd/gallery</code> to click through every page.</i></td>
   </tr>
@@ -54,6 +61,7 @@ Recent work focused on list / content pages and a batch of interaction details:
 
 | Area | Added / fixed |
 |---|---|
+| Version / docs | Version bumped to **v1.2.0**; screenshots now include **pseudo terminal**, **code editor** and **icon rendering** (real 1180×760 captures) |
 | List widgets | `FileTree` (indent levels, expand/collapse, selected row; expand state is remembered per `Key` and collapsed subtrees are not built), `MediaCard` (cover / badge / score / title / tags / action button), `ListRows` (icon or avatar, checkbox, dividers, selected row), `PostCard` (community post with likes / comments / shares), `Pager` (ellipsis folding + locked pages) |
 | Gallery | The “Lists & Tables” page now uses **in-page underlined tabs**: List (tree / cards / rows / posts / pager) and Table (data table / chat / virtual list / drag-reorder / empty states) |
 | Switches | `SwitchEx` with style presets (default / sparkle / labeled / gradient / sizes / disabled) and builders for custom icons, labels and widths |
@@ -156,9 +164,9 @@ Measured (gallery, go1.26 windows/amd64):
 The only source of truth is `VERSION.txt` at the repo root (semver `x.y.z`).
 
 ```powershell
-./build.ps1 -Bump patch        # 0.1.0 -> 0.1.1 (written back to VERSION.txt)
-./build.ps1 -Bump minor        # 0.1.0 -> 0.2.0
-./build.ps1 -Bump major        # 0.1.0 -> 1.0.0
+./build.ps1 -Bump patch        # 1.2.0 -> 1.2.1 (written back to VERSION.txt)
+./build.ps1 -Bump minor        # 1.2.0 -> 1.3.0
+./build.ps1 -Bump major        # 1.2.0 -> 2.0.0
 ./build.ps1 -Channel release   # mark the build as release (default: dev)
 ```
 
@@ -173,9 +181,9 @@ One build injects the version into three places:
 ```go
 import "guis/internal/version"
 
-version.String()   // v0.1.0
-version.Title()    // GUIS v0.1.0 (used as the gallery window title)
-version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
+version.String()   // v1.2.0
+version.Title()    // GUIS v1.2.0 (used as the gallery window title)
+version.Full()     // v1.2.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 ```
 
 `internal/version` also ships the commit hash, build time, release channel, and semver helpers (`version.Parse` / `version.Compare`).
@@ -183,7 +191,7 @@ version.Full()     // v0.1.0 · release · 1a2b3c4 · 2026-10-29T03:49:04Z
 ## Installer (NSIS 3)
 
 ```powershell
-./build.ps1 -Installer                   # -> dist\GUIS-0.1.0-setup.exe
+./build.ps1 -Installer                   # -> dist\GUIS-1.2.0-setup.exe
 ./build.ps1 -Installer -Upx              # UPX the exe first, then package
 ./build.ps1 -Installer -Channel release  # release channel
 ./build.ps1 -Bump patch -Installer       # bump version, then package
@@ -205,8 +213,8 @@ Requires NSIS 3 (`makensis.exe`). It is auto-detected in `C:\Program Files (x86)
 
 ```powershell
 # install (/D must be the last argument, path must not be quoted)
-GUIS-0.1.0-setup.exe /S /currentuser /D=D:\Apps\GUIS
-GUIS-0.1.0-setup.exe /S /allusers              # requires elevation, exit code 5 otherwise
+GUIS-1.2.0-setup.exe /S /currentuser /D=D:\Apps\GUIS
+GUIS-1.2.0-setup.exe /S /allusers              # requires elevation, exit code 5 otherwise
 
 # uninstall
 "%LOCALAPPDATA%\Programs\GUIS\uninstall.exe" /S
