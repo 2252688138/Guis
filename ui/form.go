@@ -826,6 +826,14 @@ func inputClear(key string) {
 	inputCaret[key] = 0
 }
 
+// dateFieldLabel 日期展示框的文字：占位文案走翻译，真实日期是自然内容、保留原文。
+func dateFieldLabel(value, color string, placeholder bool) *Node {
+	if placeholder {
+		return Text(value)
+	}
+	return TextRaw(value)
+}
+
 // Chip 可选中的标签胶囊。
 func Chip(label string, active bool, onToggle func()) *Node {
 	bg, stroke, color := "rgba(255,255,255,0.05)", "rgba(255,255,255,0.10)", ColTextDim
@@ -895,7 +903,8 @@ func DateBox(s *DateState, value string, onChange func(string)) *Node {
 	}
 	s.Value, s.onChange = value, onChange
 	color := ColText
-	if value == "" {
+	placeholder := value == ""
+	if placeholder {
 		value, color = "请选择日期", "#4d5670"
 	}
 	stroke := ColStroke
@@ -903,7 +912,7 @@ func DateBox(s *DateState, value string, onChange func(string)) *Node {
 		stroke = ColPrimary
 	}
 	n := Row(
-		Text(value).St(St().Text(13, 400, color)),
+		dateFieldLabel(value, color, placeholder).St(St().Text(13, 400, color)),
 		Spacer(),
 		Text("▦").St(St().Text(11, 400, ColTextMuted)),
 	).St(St().Wp(100).H(FieldH).PadXY(12, 0).GapOf(8).R(10).

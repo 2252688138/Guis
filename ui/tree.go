@@ -43,6 +43,9 @@ type TreeOptions struct {
 	RowH     float32 // 行高，默认 30
 	OnPick   func(n TreeNode)
 	OnToggle func(n TreeNode, open bool)
+	// OnContextMenu 鼠标右键点击节点（坐标相对行左上角）：右键菜单用。
+	// 回调触发前会先把该节点设为选中，便于菜单操作定位目标。
+	OnContextMenu func(n TreeNode, x, y float32)
 }
 
 var (

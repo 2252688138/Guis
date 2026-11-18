@@ -12,6 +12,7 @@ import (
 // startLSPProcess 启动语言服务器，返回 stdin / stdout 与停止函数。
 func startLSPProcess(command string, args []string, dir string, env []string) (io.WriteCloser, io.ReadCloser, func() error, error) {
 	cmd := exec.Command(command, args...)
+	hideConsole(cmd)
 	if dir != "" {
 		cmd.Dir = dir
 	}

@@ -8,6 +8,9 @@ DeepSeek Harness（cmd/deepseek）构建脚本：图标资源 + 版本注入 + �
   build-multi.ps1    gallery 的多端编译矩阵（Windows / Linux / macOS / Web）
   build-deepseek.ps1 cmd/deepseek 桌面 Agent 的 Windows 发布（本脚本）
 
+默认直接产出 NSIS 安装包（dist\DeepSeekHarness-<版本>-setup.exe）；
+只要二进制用 -ExeOnly。打包内容见下方「随包资源」。
+
 版本号与 build.ps1 / build-multi.ps1 共用仓库根目录的 VERSION.txt（唯一来源），做三件事：
   1. 生成 cmd/deepseek/rsrc_windows_<arch>.syso（图标 + 文件属性版本，见 tools/winres）
   2. 通过 -ldflags -X 注入 guis/internal/version.*（运行时 version.String() / version.Full()）
@@ -17,6 +20,13 @@ DeepSeek Harness（cmd/deepseek）构建脚本：图标资源 + 版本注入 + �
 因此构建后会把仓库 assets/intro 复制到 dist\assets\intro，安装器打包时一并装入
 （guis.nsi 的 ASSETS_DIR 可选块），否则发布版就没有内置片头。
 
+随包资源（全部跟着安装包走，缺一项构建直接中止）：
+  assets\intro   片头素材（4 个 mp4）        -> $INSTDIR\assets\intro
+  assets\skins   10 套预设皮肤（hero + json）-> $INSTDIR\assets\skins
+  rg.exe / aria2c.exe                       -> $INSTDIR（Agent 探测程序目录）
+桌宠素材（assets\pet，66MB）默认不打包，需要时加 -WithPet；
+ffmpeg 不随包，在线音乐 / 视频解码用系统 PATH 里的 ffmpeg。
+
 发布构建参数（与 build.ps1 一致）：
   -trimpath -buildvcs=false                去掉本机绝对路径与 VCS 信息
   -ldflags "-s -w -H windowsgui -buildid=" 去符号/调试信息，GUI 子系统不弹控制台
@@ -24,18 +34,22 @@ DeepSeek Harness（cmd/deepseek）构建脚本：图标资源 + 版本注入 + �
   GOAMD64=v1                               保守指令集，兼容旧 CPU
 
 .EXAMPLE
-./build-deepseek.ps1                        # 发布构建 -> dist\deepseek.exe（含 assets\intro）
-./build-deepseek.ps1 -Dev                   # 开发构建：保留符号、带控制台（stderr 日志可见）
-./build-deepseek.ps1 -Installer             # 构建 + 打安装器 -> dist\DeepSeekHarness-0.1.0-setup.exe
-./build-deepseek.ps1 -Installer -Upx        # 再叠加 UPX -9（体积最小）
-./build-deepseek.ps1 -Bump patch -Installer # 版本号 +1 后打包（0.1.0 -> 0.1.1）
+./build-deepseek.ps1                        # 发布构建 -> dist\deepseek.exe + DeepSeekHarness-<版本>-setup.exe
+./build-deepseek.ps1 -ExeOnly               # 只出 exe，不打安装包（快速验证）
+./build-deepseek.ps1 -Upx                   # 再叠加 UPX -9（体积最小）
+./build-deepseek.ps1 -WithPet               # 连桌宠素材（66MB）一起打进去
+./build-deepseek.ps1 -NoTools               # 不带 rg.exe / aria2c.exe
+./build-deepseek.ps1 -Dev                   # 开发构建：保留符号、带控制台（自动跳过安装器）
+./build-deepseek.ps1 -Bump patch            # 版本号 +1 后直接打包（0.1.0 -> 0.1.1）
 ./build-deepseek.ps1 -Test -Run             # 先跑 go test ./cmd/deepseek/...，成功后启动程序
-./build-deepseek.ps1 -NoRes -NoAssets       # 跳过 syso 与素材复制（快速迭代）
+./build-deepseek.ps1 -NoRes -NoAssets       # 跳过 syso 与素材复制（快速迭代，记得配 -ExeOnly）
 #>
 param(
     [switch]$Dev,
     [switch]$Upx,
+    # 默认产出 NSIS 安装包（等价于以前的 -Installer）；只需要 exe 时加 -ExeOnly
     [switch]$Installer,
+    [switch]$ExeOnly,
     [string]$OutDir = 'dist',
     # ---- 版本号管理（VERSION.txt 与其他构建脚本共用）----
     [ValidateSet('none', 'patch', 'minor', 'major')]
@@ -46,6 +60,11 @@ param(
     # ---- Windows 资源 / 素材 / 安装器 ----
     [switch]$NoRes,
     [switch]$NoAssets,
+    # 外部工具（rg.exe / aria2c.exe，各几 MB）：默认随包，-NoTools 跳过
+    [switch]$NoTools,
+    # 桌宠素材（66MB）默认不打包，需要时加 -WithPet
+    [switch]$WithPet,
+    [string]$ToolsDir = '',
     [switch]$Test,
     [switch]$Run,
     [string]$ProductName = 'DeepSeek Harness',
@@ -64,6 +83,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $MyInvocation.MyCommand.Path)
+
+# 开发构建只关心能不能跑：保留符号与控制台，也不打安装包
+if ($Dev) { $ExeOnly = $true }
 
 $Pkg = './cmd/deepseek'
 $PkgDir = Join-Path $PSScriptRoot 'cmd\deepseek'
@@ -190,9 +212,17 @@ if ($LASTEXITCODE -ne 0) { throw "go build 失败：$Pkg" }
 $results = @(Get-Item -LiteralPath $exePath)
 
 # ================= 片头素材（exe 同级 assets\intro）=================
+$assetsRoot = Join-Path $OutDirAbs 'assets'
+
+# ================= 片头素材（exe 同级 assets\intro）=================
+# 素材每次都重新拷贝：先清掉上一轮的 assets，避免已删掉的素材 / 上次带过的桌宠
+# 残留在 dist 里被 NSIS 一起打进安装包。
 $introSrc = Join-Path $PSScriptRoot $IntroDir
-$assetDest = Join-Path $OutDirAbs 'assets\intro'
+$assetDest = Join-Path $assetsRoot 'intro'
 if (-not $NoAssets) {
+    if (Test-Path -LiteralPath $assetsRoot) {
+        Remove-Item -LiteralPath $assetsRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
     if (Test-Path -LiteralPath $introSrc) {
         Write-Host ("[assets] {0} -> {1}" -f $introSrc, $assetDest) -ForegroundColor Cyan
         New-Item -ItemType Directory -Force -Path $assetDest | Out-Null
@@ -205,7 +235,7 @@ if (-not $NoAssets) {
 # ================= 桌宠素材（exe 同级 assets\pet）=================
 $petSrc = Join-Path $PSScriptRoot $PetDir
 $petDest = Join-Path $OutDirAbs 'assets\pet'
-if (-not $NoAssets) {
+if ((-not $NoAssets) -and $WithPet) {
     if (Test-Path -LiteralPath $petSrc) {
         Write-Host ("[pet] {0} -> {1}" -f $petSrc, $petDest) -ForegroundColor Cyan
         New-Item -ItemType Directory -Force -Path $petDest | Out-Null
@@ -213,6 +243,9 @@ if (-not $NoAssets) {
     } else {
         Write-Warning "桌宠素材目录不存在，跳过：$petSrc"
     }
+} elseif (Test-Path -LiteralPath $petDest) {
+    # 本次不打包桌宠：清掉上一次构建留在 dist 里的旧素材，避免装机包与 dist 不一致
+    Remove-Item -LiteralPath $petDest -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # ================= 皮肤素材（exe 同级 assets\skins）=================
@@ -227,6 +260,88 @@ if (-not $NoAssets) {
     } else {
         Write-Warning "皮肤素材目录不存在，跳过：$skinSrc"
     }
+}
+
+# ================= 外部工具（rg.exe / aria2c.exe）=================
+# Agent 会探测「程序目录下是否存在 rg.exe / aria2c.exe」并据此注入提示词：
+# 有 rg 才有 ripgrep 回退检索，有 aria2c 才有下载加速。两个都在 5MB 以内，
+# 默认随包带进安装目录；-NoTools 可跳过，-ToolsDir 可指定来源目录。
+function Find-ExternalTool {
+    param([string]$Name, [string[]]$Extra = @())
+    $cands = @()
+    if ($ToolsDir) { $cands += (Join-Path $ToolsDir $Name) }
+    if ($Extra) { $cands += $Extra }
+    $cands += @(
+        (Join-Path $PSScriptRoot "bin\$Name"),
+        (Join-Path $PSScriptRoot "tools\bin\$Name"),
+        "D:\JiCoder\rg\$Name",
+        "D:\JiCoder\$Name",
+        "H:\JIMaX\bin\$Name"
+    )
+    foreach ($c in $cands) {
+        if ($c -and (Test-Path -LiteralPath $c)) { return (Resolve-Path -LiteralPath $c).Path }
+    }
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    return $null
+}
+
+$toolsStage = Join-Path $OutDirAbs '_tools'
+if (-not $NoTools) {
+    if (Test-Path -LiteralPath $toolsStage) { Remove-Item -LiteralPath $toolsStage -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $toolsStage | Out-Null
+    $found = 0
+    foreach ($name in @('rg.exe', 'aria2c.exe')) {
+        $src = Find-ExternalTool -Name $name
+        if ($src) {
+            Copy-Item -LiteralPath $src -Destination (Join-Path $toolsStage $name) -Force
+            $found++
+            Write-Host ("[tool] {0} <- {1}" -f $name, $src) -ForegroundColor Cyan
+        } else {
+            Write-Warning "未找到 $name（可用 -ToolsDir 指定），安装包不含它"
+        }
+    }
+    if ($found -eq 0) { Remove-Item -LiteralPath $toolsStage -Recurse -Force -ErrorAction SilentlyContinue }
+} elseif (Test-Path -LiteralPath $toolsStage) {
+    Remove-Item -LiteralPath $toolsStage -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# ================= 资源完整性检查 =================
+# 安装后要能直接用：片头 / 桌宠 / 皮肤都得跟着安装包走。
+# 打包前逐项确认，缺文件直接失败，避免发布一个「装完不能用」的安装包。
+$problems = New-Object System.Collections.Generic.List[string]
+function Test-AssetDir {
+    param([string]$Label, [string]$Path, [string]$Filter = '*', [switch]$Required)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        if ($Required) { $problems.Add("$Label 目录缺失：$Path") }
+        return 0
+    }
+    $n = (Get-ChildItem -LiteralPath $Path -Recurse -File -Filter $Filter -ErrorAction SilentlyContinue | Measure-Object).Count
+    if ($Required -and $n -eq 0) { $problems.Add("$Label 目录为空：$Path") }
+    return $n
+}
+
+$nIntro = Test-AssetDir -Label '片头素材' -Path $assetDest -Filter '*.mp4' -Required:(-not $NoAssets)
+$nIntro += Test-AssetDir -Label '片头素材' -Path $assetDest -Filter '*.webm'
+$nPet = 0
+$nPetIdx = 0
+if ($WithPet) {
+    $nPet = Test-AssetDir -Label '桌宠素材' -Path $petDest -Filter '*.gif' -Required:(-not $NoAssets)
+    $nPetIdx = Test-AssetDir -Label '桌宠索引' -Path $petDest -Filter 'index.json' -Required:(-not $NoAssets)
+}
+$nSkin = 0
+if (-not $NoAssets) {
+    $nSkin = Test-AssetDir -Label '预设皮肤' -Path $skinDest -Filter 'theme.json' -Required
+}
+$nTools = 0
+if ((-not $NoTools) -and (Test-Path -LiteralPath $toolsStage)) {
+    $nTools = (Get-ChildItem -LiteralPath $toolsStage -File | Measure-Object).Count
+}
+
+if ($problems.Count -gt 0) {
+    Write-Host ''
+    foreach ($p in $problems) { Write-Host "[资源缺失] $p" -ForegroundColor Red }
+    throw '安装包资源不完整，已中止（修复后重试，或用 -NoAssets / -NoPet 明确跳过）'
 }
 
 # ================= UPX =================
@@ -270,15 +385,32 @@ function Find-Makensis {
     return $null
 }
 
-if ($Installer) {
+if (-not $ExeOnly) {
     $makensis = Find-Makensis
     if (-not $makensis) {
-        throw '未找到 makensis.exe：请安装 NSIS 3（https://nsis.sourceforge.io/），或用环境变量 NSIS_EXE 指定路径'
+        throw '未找到 makensis.exe：请安装 NSIS 3（https://nsis.sourceforge.io/），用环境变量 NSIS_EXE 指定路径，或加 -ExeOnly 只构建 exe'
     }
 
     $setupName = '{0}-{1}-setup.exe' -f $ProductSlug, $Version
     $setupPath = Join-Path $OutDirAbs $setupName
     $nsiPath = Join-Path $PSScriptRoot 'installer\guis.nsi'
+
+    # 先删旧包：makensis 中途失败时不会留下一个「看起来是最新」的安装器。
+    # 刚构建完的 exe 常被杀软 / 资源管理器短暂占用，删除会失败（表现为
+    # makensis 报 Can't open output file），这里带重试。
+    if (Test-Path -LiteralPath $setupPath) {
+        for ($i = 0; $i -lt 6; $i++) {
+            try {
+                Remove-Item -LiteralPath $setupPath -Force -ErrorAction Stop
+                break
+            } catch {
+                Start-Sleep -Milliseconds 300
+            }
+        }
+        if (Test-Path -LiteralPath $setupPath) {
+            Write-Warning "旧安装包仍被占用，尝试直接覆盖：$setupPath"
+        }
+    }
 
     Write-Host ("[nsis] {0}  ->  {1}" -f $nsiPath, $setupPath) -ForegroundColor Cyan
     $nsisArgs = @(
@@ -300,12 +432,26 @@ if ($Installer) {
         $nsisArgs += "/DASSETS_DIR=$assetDest"
     }
     # 桌宠素材同理：只有真正拷到了才让 NSIS 打包 assets\pet
-    if ((-not $NoAssets) -and (Test-Path -LiteralPath $petDest)) {
+    if ((-not $NoAssets) -and $WithPet -and (Test-Path -LiteralPath $petDest)) {
         $nsisArgs += "/DPET_DIR=$petDest"
+    }
+    # 预设皮肤（assets\skins）：皮肤面板靠它列出内置主题
+    if ((-not $NoAssets) -and (Test-Path -LiteralPath $skinDest)) {
+        $nsisArgs += "/DSKIN_DIR=$skinDest"
+    }
+    # 外部工具（rg.exe / aria2c.exe）：装到安装根目录，Agent 启动即可探到
+    if ((-not $NoTools) -and (Test-Path -LiteralPath $toolsStage)) {
+        $nsisArgs += "/DTOOLS_DIR=$toolsStage"
     }
     $nsisArgs += $nsiPath
 
     & $makensis @nsisArgs
+    if ($LASTEXITCODE -ne 0) {
+        # 打安装包偶发 Can't open output file（输出文件被扫描程序占用），等一会儿重试一次
+        Write-Warning "makensis 首次失败（退出码 $LASTEXITCODE），1.5s 后重试一次"
+        Start-Sleep -Milliseconds 1500
+        & $makensis @nsisArgs
+    }
     if ($LASTEXITCODE -ne 0) { throw "makensis 打包失败（退出码 $LASTEXITCODE）" }
 
     if (Test-Path -LiteralPath $setupPath) {
@@ -324,14 +470,22 @@ if ((-not $NoAssets) -and (Test-Path -LiteralPath $assetDest)) {
     $n = (Get-ChildItem -LiteralPath $assetDest -File | Measure-Object).Count
     Write-Host ("素材 assets\intro：{0} 个文件" -f $n) -ForegroundColor DarkGray
 }
-if ((-not $NoAssets) -and (Test-Path -LiteralPath $petDest)) {
+if ($WithPet -and (-not $NoAssets) -and (Test-Path -LiteralPath $petDest)) {
     $n = (Get-ChildItem -LiteralPath $petDest -File | Measure-Object).Count
     Write-Host ("素材 assets\pet：{0} 个文件" -f $n) -ForegroundColor DarkGray
+}
+if ((-not $NoAssets) -and (Test-Path -LiteralPath $skinDest)) {
+    $n = (Get-ChildItem -LiteralPath $skinDest -Recurse -File -Filter 'theme.json' | Measure-Object).Count
+    Write-Host ("素材 assets\skins：{0} 套预设皮肤" -f $n) -ForegroundColor DarkGray
+}
+if ((-not $NoTools) -and (Test-Path -LiteralPath $toolsStage)) {
+    $names = (Get-ChildItem -LiteralPath $toolsStage -File | Select-Object -ExpandProperty Name) -join ', '
+    Write-Host ("随包工具：{0}" -f $names) -ForegroundColor DarkGray
 }
 Write-Host ''
 Write-Host ("版本 {0} · 通道 {1} · 提交 {2}" -f $Version, $Channel, $Commit) -ForegroundColor Green
 Write-Host ("程序 {0}" -f $exePath) -ForegroundColor Green
-if ($Installer) {
+if ((-not $ExeOnly) -and (Test-Path -LiteralPath (Join-Path $OutDirAbs ('{0}-{1}-setup.exe' -f $ProductSlug, $Version)))) {
     Write-Host ("安装器 {0}" -f (Join-Path $OutDirAbs ('{0}-{1}-setup.exe' -f $ProductSlug, $Version))) -ForegroundColor Green
 }
 

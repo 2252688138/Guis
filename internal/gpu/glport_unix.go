@@ -183,6 +183,11 @@ func InitGLProcs() int {
 
 // fns 取函数表快照（nil 字段由各包装函数空值保护）。
 func fns() *glFns {
+	if glFnsOverride != nil {
+		if t := glFnsOverride(); t != nil {
+			return t
+		}
+	}
 	glMu.RLock()
 	t := &glTable
 	glMu.RUnlock()

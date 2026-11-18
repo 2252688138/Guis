@@ -69,6 +69,14 @@ func buildTreeRow(opts TreeOptions, n TreeNode, depth int, open bool, sel string
 			}
 			RequestRedraw()
 		})
+		if opts.OnContextMenu != nil {
+			row.RightClickEvt(func(x, y float32) {
+				// 右键先选中行：菜单里的操作按「当前选中节点」定位目标。
+				treeSel[opts.Key] = n.Key
+				opts.OnContextMenu(n, x, y)
+				RequestRedraw()
+			})
+		}
 	}
 	return row
 }

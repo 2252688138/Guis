@@ -439,6 +439,7 @@ func hotBuild(dst string) error {
 		}
 		args = append(args, pkg)
 		cmd := exec.Command("go", args...)
+		hideConsole(cmd)
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err == nil {

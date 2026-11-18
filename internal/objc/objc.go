@@ -175,6 +175,29 @@ func SendB(id uintptr, sel string, v bool) {
 	purego.SyscallN(msgSendAddr, id, Sel(sel), b)
 }
 
+// SendRaw 发消息（最多 6 个整数/指针参数，如 Metal 的
+// setRenderPipelineState: / setVertexBytes:length:atIndex: 之外的多参方法）。
+// 参数全部按整数寄存器传递；float 参数不能走这里。
+func SendRaw(id uintptr, sel string, args ...uintptr) uintptr {
+	all := make([]uintptr, 0, len(args)+2)
+	all = append(all, id, Sel(sel))
+	all = append(all, args...)
+	r, _, _ := purego.SyscallN(msgSendAddr, all...)
+	return r
+}
+
+// MsgSend 暴露 objc_msgSend 地址（Metal 侧需要为复杂结构体参数自建签名）。
+func MsgSend() uintptr { return msgSendAddr }
+
+// ObjOf 取返回对象指针的无参方法（如 contents / renderTargetTexture）。
+func ObjOf(id uintptr, sel string) uintptr { return msgU(id, Sel(sel)) }
+
+// IntOfN 取返回 NSInteger 的无参方法（如 texture 的 width/height）。
+func IntOfN(id uintptr, sel string) int64 { return int64(msgU(id, Sel(sel))) }
+
+// SendPtr 发消息（1 个指针参数，如 setContents:）。
+func SendPtr(id uintptr, sel string, p uintptr) uintptr { return msgUU(id, Sel(sel), p) }
+
 // SendRect 发消息（1 个 NSRect 参数，如 initWithFrame:）。
 func SendRect(id uintptr, sel string, r Rect) uintptr { return msgRect(id, Sel(sel), r) }
 

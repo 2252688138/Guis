@@ -1,9 +1,11 @@
-# 纯 Go、零 CGO：我手写了一个不用 WebView 的 Web 风格 GUI 框架
+# 纯 Go、零 CGO：一个不用 WebView 的 Web 风格 GUI 框架
 
 > 6.45 MB → 4.54 MB → 1.52 MB；一个矩形 6 个顶点、22 个 float；圆角、描边、阴影、毛玻璃、超采样、中文排版全部自己画。
 > 这篇文章拆解 GUIS 的渲染管线、布局引擎、字体图集，以及 9 个把我按在地上摩擦过的坑。
 
 仓库地址：<https://github.com/2252688138/guis>
+国内Gitee已实时同步：<https://gitee.com/a520/guis> 
+PS：访问不了 github的小伙伴 可访问这个地址
 规模：129 个 Go 源文件、约 3.8 万行（含示例与工具），MIT 协议。
 
 ---

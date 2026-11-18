@@ -304,6 +304,28 @@ Section "主程序" SEC_MAIN
         SetOutPath "$INSTDIR"
     !endif
 
+    ; 可选：预设皮肤（build-deepseek.ps1 传 /DSKIN_DIR=<dist\assets\skins>）
+    ; 皮肤面板读 <exe 同级>\assets\skins\<id>\{hero.webp,theme.json}，缺了就没有预设主题。
+    !ifdef SKIN_DIR
+        !if /FileExists "${SKIN_DIR}\*.*"
+            SetOutPath "$INSTDIR\assets\skins"
+            File /r "${SKIN_DIR}\*"
+            SetOutPath "$INSTDIR"
+        !endif
+    !endif
+
+    ; 可选：随包外部工具 rg.exe / aria2c.exe（放安装根目录，Agent 探测程序目录）
+    !ifdef TOOLS_DIR
+        SetOutPath "$INSTDIR"
+        !if /FileExists "${TOOLS_DIR}\rg.exe"
+            File "${TOOLS_DIR}\rg.exe"
+        !endif
+        !if /FileExists "${TOOLS_DIR}\aria2c.exe"
+            File "${TOOLS_DIR}\aria2c.exe"
+        !endif
+        SetOutPath "$INSTDIR"
+    !endif
+
     WriteUninstaller "$INSTDIR\uninstall.exe"
 
     ; 开始菜单 + 桌面快捷方式

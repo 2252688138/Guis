@@ -44,6 +44,10 @@ type Options struct {
 	// Locale 启动语言（BCP-47，如 "en-US" / "zh-CN"）。
 	// 留空 = 自动：偏好 ui.locale > 系统语言 > en-US（见 ui.AutoLocale）。
 	Locale string
+	// RenderBackend 渲染后端（仅 macOS 有效）："" = OpenGL（默认），
+	// "metal" = Metal，Metal 初始化失败自动回退 OpenGL。
+	// 环境变量 GUIS_RENDER 可覆盖（metal / gl）。
+	RenderBackend string
 }
 
 // App 一个窗口的应用实例（UI 线程独占）。
@@ -180,9 +184,9 @@ type App struct {
 	trimmedDeep bool
 
 	// 本帧裁剪栈（用于去重：子项裁剪区与父级完全相同时不重复入栈）
-	clipStack []geom.Rect
-	clipN     int
-	clipSkip  int
+	clipStack  []geom.Rect
+	clipN      int
+	clipPushed []bool
 
 	// 组件栅格缓存：结构路径键 → 一张屏幕快照纹理（见 ui/layers.go）
 	layers       map[uint64]*layerEntry
@@ -289,6 +293,9 @@ func newApp(opts Options, view func() *Node) (*App, error) {
 	if bgAny == nil {
 		bgAny = "#0b0f19"
 	}
+
+	// 渲染后端必须在建窗口前确定（macOS：OpenGL / Metal）。
+	gpu.SetRenderBackend(opts.RenderBackend)
 
 	win, err := newBackend(opts)
 	if err != nil {
@@ -447,6 +454,12 @@ func runLoop() error {
 					a.trimCaches(true)
 					a.trimmed, a.trimmedDeep = true, true
 				}
+				// 不渲染，但排队的 UI 回调必须照常执行：自动化任务、下载完成、
+				// 后台工具结果等都在 Post 里落到界面状态上，跳过这一步会让它们
+				// 一直卡在「等界面线程」，直到用户把窗口调出来才生效（表现为定时
+				// 任务到点没反应、超时后直接丢弃）。回调内部只改状态 + 请求重绘，
+				// 不需要 GL 上下文，最小化时执行是安全的。
+				a.runPending()
 				continue
 			}
 			// 只有装饰动画在驱动时按时间间隔节流：消息泵仍跑 120Hz（输入不掉响应），
@@ -992,7 +1005,7 @@ func (a *App) frame(forced bool) {
 		frameT0 = time.Now()
 	}
 	a.r.Begin(a.bg)
-	a.clipN, a.clipSkip = 0, 0
+	a.clipN = 0
 	a.animating = false
 	a.animFast = false
 	if fpsDebug {
@@ -1269,15 +1282,23 @@ func (a *App) paintChildren(n *Node, children []*Node, sy float32, clipped bool,
 
 // pushClip 开启一层裁剪；与当前裁剪区完全相同时跳过（Scroll 内再套 Clip 很常见），
 // 避免重复入栈并在 Pop 时引发多余的批次切分。
+//
+// 是否真正压栈必须逐层记录：早期实现用全局 clipSkip 计数，跳过压栈的那层与
+// 之后新压栈的层在 Pop 顺序上会错位（弹掉的是别人压的裁剪），渲染器裁剪栈
+// 逐帧残留，表现为面板下半部分内容整片消失。
 func (a *App) pushClip(r geom.Rect) {
 	if a.clipN < len(a.clipStack) {
 		a.clipStack[a.clipN] = r
 	} else {
 		a.clipStack = append(a.clipStack, r)
 	}
-	if a.clipN > 0 && a.clipStack[a.clipN-1] == r {
-		a.clipSkip++
+	pushed := !(a.clipN > 0 && a.clipStack[a.clipN-1] == r)
+	if a.clipN < len(a.clipPushed) {
+		a.clipPushed[a.clipN] = pushed
 	} else {
+		a.clipPushed = append(a.clipPushed, pushed)
+	}
+	if pushed {
 		a.r.PushClip(r)
 	}
 	a.clipN++
@@ -1289,11 +1310,9 @@ func (a *App) popClip() {
 		return
 	}
 	a.clipN--
-	if a.clipSkip > 0 {
-		a.clipSkip--
-		return
+	if a.clipN < len(a.clipPushed) && a.clipPushed[a.clipN] {
+		a.r.PopClip()
 	}
-	a.r.PopClip()
 }
 
 // scrollbarFading 滚动条淡出过渡是否仍在进行（需继续重绘推进）。

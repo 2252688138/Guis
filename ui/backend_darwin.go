@@ -9,6 +9,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 
 	"guis/internal/cocoa"
 	"guis/internal/gpu"
@@ -30,10 +31,31 @@ type platformWin struct {
 	corner  float32
 	accepts bool
 	visible bool
+	// metal 本窗口是否走 Metal（CAMetalLayer + MTLCommandQueue），否则 NSOpenGL。
+	metal bool
 }
 
-// newBackend 创建 NSWindow 并建立 OpenGL 上下文。
+// newBackend 创建 NSWindow 并建立渲染上下文。
+//
+// 默认仍用 OpenGL（NSOpenGLContext + GL 3.2 Core）；Options.RenderBackend 或
+// 环境变量 GUIS_RENDER=metal 时优先 Metal，Metal 初始化失败自动回退 OpenGL，
+// 不影响启动。
 func newBackend(opts Options) (*platformWin, error) {
+	if gpu.MetalRequested() {
+		if w, err := cocoa.NewWindowLayerBacked(opts.Title, opts.Width, opts.Height); err == nil {
+			if err := gpu.MetalAttach(w.NativeHandle(), float64(w.Scale())); err == nil {
+				p := &platformWin{w: w, accepts: true, visible: true, metal: true}
+				w.SetHandler(p.onCocoaEvent)
+				return p, nil
+			} else {
+				fmt.Fprintf(os.Stderr, "[guis] Metal 不可用，回退 OpenGL：%v\n", err)
+			}
+			w.Destroy()
+		} else {
+			fmt.Fprintf(os.Stderr, "[guis] Metal 窗口创建失败，回退 OpenGL：%v\n", err)
+		}
+	}
+
 	w, err := cocoa.NewWindow(opts.Title, opts.Width, opts.Height)
 	if err != nil {
 		return nil, err
@@ -111,10 +133,26 @@ func (p *platformWin) onCocoaEvent(ev cocoa.Event) {
 // ---- Backend 方法集 ----
 
 func (p *platformWin) SetEventHandler(fn func(Event)) { p.handler = fn }
-func (p *platformWin) MakeCurrent()                   { p.w.MakeCurrent() }
-func (p *platformWin) Swap()                          { p.w.Swap() }
-func (p *platformWin) PixelSize() (int32, int32)      { return p.w.PixelSize() }
-func (p *platformWin) Scale() float32                 { return p.w.Scale() }
+func (p *platformWin) MakeCurrent() {
+	if p.metal {
+		// Metal 无“绑定上下文”概念：这里只同步 Retina 比例与 drawable 尺寸，
+		// 保证下一帧 Resolve / 直绘的视口与窗口像素一致。
+		gpu.MetalSetScale(float64(p.w.Scale()))
+		pw, ph := p.w.PixelSize()
+		gpu.MetalSetDrawableSize(pw, ph)
+		return
+	}
+	p.w.MakeCurrent()
+}
+func (p *platformWin) Swap() {
+	if p.metal {
+		gpu.MetalPresent()
+		return
+	}
+	p.w.Swap()
+}
+func (p *platformWin) PixelSize() (int32, int32) { return p.w.PixelSize() }
+func (p *platformWin) Scale() float32            { return p.w.Scale() }
 
 func (p *platformWin) IsMinimized() bool       { return p.w.IsMinimized() }
 func (p *platformWin) SetTitle(s string)       { p.w.SetTitle(s) }
@@ -161,4 +199,9 @@ func (p *platformWin) NativeHandle() uintptr { return p.w.NativeHandle() }
 
 func (p *platformWin) Close() { p.w.Close() }
 
-func (p *platformWin) Destroy() { p.w.Destroy() }
+func (p *platformWin) Destroy() {
+	if p.metal {
+		gpu.MetalDetach()
+	}
+	p.w.Destroy()
+}

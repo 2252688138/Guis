@@ -219,7 +219,10 @@ func measureNode(lc *layoutCtx, n *Node, c Constraints, parent *Node) {
 		if st.Width > 0 || st.WidthPct > 0 {
 			contentW = innerMaxW
 		}
-		if st.LineHeight > 0 {
+		if st.LineHeight > 0 && n.wrapW <= 0 {
+			// 未折行时才用显式换行数推算高度；已折行（wrapW > 0）时 measure 已经按
+			// 真实行数算好了高度，再用「显式换行数」覆盖会变成只算 1 行——长段落
+			// 只有一行高，后面的文本全部画到容器外面（用户长消息气泡溢出）。
 			lines := float32(1)
 			for _, r := range n.Text {
 				if r == '\n' {
@@ -998,6 +1001,11 @@ func placeChildren(lc *layoutCtx, n *Node, innerW, innerH float32) {
 		arrange(lc, c)
 	}
 
+	// 水平行内的矢量图标对齐到同行文字的墨迹中心（见 alignRowIconsToText）
+	if horiz {
+		alignRowIconsToText(lc, n)
+	}
+
 	if n.Kind == KScroll {
 		n.ContentH = cursor - oy + st.Pad.Bottom
 	}
@@ -1008,6 +1016,94 @@ func placeChildren(lc *layoutCtx, n *Node, innerW, innerH float32) {
 	if n.Kind != KScroll && n.Style.Clip {
 		clampChildren(n)
 	}
+}
+
+// alignRowIconsToText 让同一水平行里的矢量图标对齐到文字墨迹中心。
+//
+// placeChildren 的交叉轴 AlignCenter 是按各自「盒子」居中：文字盒子的高度是整个行高
+// （含降部留白），墨迹中心比盒心高一两像素，而图标盒高就等于字号、没有这份留白，
+// 于是同一行里的图标看起来总比文字明显低一截。这里取同行文字的墨迹包围盒与行高
+// 的差，用绘制期 DrawY 把图标上移同样的量：不改布局，行高与命中区域都不受影响
+// （与业务侧 iconAligned 的算法一致，业务已显式 Translate 过的图标不再重复修正）。
+func alignRowIconsToText(lc *layoutCtx, n *Node) {
+	if lc == nil || lc.fonts == nil || len(n.Children) < 2 {
+		return
+	}
+	// 取字号最大的非空文本作为样本文本（同一行可能有辅助小字）
+	var sample *Node
+	for _, c := range n.Children {
+		if c == nil || c.Style.PosAbs || c.Kind != KText || c.Text == "" || c.Style.FontSize <= 0 {
+			continue
+		}
+		if sample == nil || c.Style.FontSize > sample.Style.FontSize {
+			sample = c
+		}
+	}
+	if sample == nil {
+		return
+	}
+	sst := &sample.Style
+	f := lc.fonts.getFamily(sst.FontSize, sst.FontWeight, sst.FontFamily)
+	if f == nil || f.LineHeight <= 0 {
+		return
+	}
+	text := sample.Text
+	if rs := []rune(text); len(rs) > 4 {
+		text = string(rs[:4])
+	}
+	top, gh := textGlyphBoundsOf(f, text)
+	if gh <= 0 {
+		return
+	}
+	lh := f.LineHeight
+	dy := (top + gh/2) - lh/2
+	// 幅度封顶：差值过大说明此行图标与文字尺寸悬殊（大图标按钮等），
+	// 强行按文字对齐反而错位，按行高的 15% 封顶。
+	if lim := lh * 0.15; dy < -lim {
+		dy = -lim
+	} else if dy > lim {
+		dy = lim
+	}
+	if dy > -0.25 && dy < 0.25 {
+		return
+	}
+	for _, c := range n.Children {
+		if c == nil || c.Style.PosAbs || c.Style.DrawY != 0 || !isInlineGlyph(c) {
+			continue
+		}
+		align := n.Align
+		if c.Style.AlignSelf != AlignStart {
+			align = c.Style.AlignSelf
+		}
+		if align != AlignCenter {
+			continue
+		}
+		c.Style.DrawY = dy
+	}
+}
+
+// isInlineGlyph 行内小图形：矢量图标，或 28px 以内的自绘小图形（Box / Stack 拼的几何图标）。
+//
+// 几何图标（加号、文件夹、漏斗等由色块拼成）同样没有字形，和文字并排时会有
+// 和 KIcon 一模一样的偏差，所以一起按文字墨迹中心对齐；细线、占位块、Grow 子项
+// 与大的自定义控件（开关 / 头像 / 输入框）不参与。
+func isInlineGlyph(c *Node) bool {
+	switch c.Kind {
+	case KIcon:
+		return true
+	case KBox, KStack:
+	default:
+		return false
+	}
+	if c.Style.Grow > 0 {
+		return false
+	}
+	w, h := c.Frame.W, c.Frame.H
+	if w < 8 || w > 28 || h < 8 || h > 28 {
+		return false
+	}
+	// 近乎正方形才算图标：横条 / 竖条 / 宽按钮不参与，避免整块背景被挪
+	return h-w <= 8 && w-h <= 8
 }
 
 // clampChildren 把子项裁剪到父框内（配合 Clipped）。

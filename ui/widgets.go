@@ -438,6 +438,8 @@ func inputNodeH(key, value, placeholder string, password bool, h float32, onChan
 
 	// segCells 把 [start,end) 文本按选区切段（密码框用掩码等长替换）
 	segCells := func(start, end int) []*Node {
+		// 用户正在输入的内容是自然内容，跳过文案翻译。
+		defer NoTranslateScope()()
 		segs := sel.SelLineSegments(start, end)
 		out := make([]*Node, 0, len(segs)+1)
 		for _, sg := range segs {
@@ -466,8 +468,10 @@ func inputNodeH(key, value, placeholder string, password bool, h float32, onChan
 			if cp < 0 || cp > len(cr) {
 				cp = len(cr)
 			}
-			cells = append(cells, Text(string(cr[:cp])).St(St().Text(13, 400, ColText).BgC(ColBgSoft).R(3)))
-			cells = append(cells, Text(string(cr[cp:])).St(St().Text(13, 400, ColText).BgC(ColHover).R(3)))
+			NoTranslate(func() {
+				cells = append(cells, Text(string(cr[:cp])).St(St().Text(13, 400, ColText).BgC(ColBgSoft).R(3)))
+				cells = append(cells, Text(string(cr[cp:])).St(St().Text(13, 400, ColText).BgC(ColHover).R(3)))
+			})
 			showCaret = false
 		}
 		if showCaret {

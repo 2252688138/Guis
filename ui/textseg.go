@@ -8,6 +8,8 @@ package ui
 // TextSegNodes 把 [start,end) 这段文本按当前选区切段渲染成节点。
 // centerY=true 时每段按行高中线垂直居中（多行输入用）。
 func TextSegNodes(t *TextSel, start, end int, size float32, weight int32, color string, centerY bool) []*Node {
+	// 输入框 / 文本域里是用户正在编辑的自然内容，整段跳过文案翻译。
+	defer NoTranslateScope()()
 	segs := t.SelLineSegments(start, end)
 	out := make([]*Node, 0, len(segs))
 	for _, sg := range segs {

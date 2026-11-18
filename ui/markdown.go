@@ -591,6 +591,8 @@ type mdRenderer struct {
 // 悬停/按下由 App 按指针写入、本库不读取 Node.Hover/Pressed，
 // 交互状态（页签/折叠/详情）通过 mdStateRev 参与缓存键。
 func Markdown(key, src string, opts ...MarkdownOptions) *Node {
+	// 正文是用户 / 模型产生的自然内容，整段跳过文案翻译。
+	defer NoTranslateScope()()
 	o := MarkdownOptions{}
 	if len(opts) > 0 {
 		o = opts[0]

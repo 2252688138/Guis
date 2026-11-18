@@ -176,8 +176,12 @@ func Spacer() *Node {
 }
 
 // Text 文本节点。
+//
+// 界面文案会先过一遍全局翻译钩子（见 i18n_text.go 的 SetTextTranslator）：业务
+// 注册中英词表后，所有组件里的字面量自动多语言，不需要改调用点。需要保留原文
+// （用户 / 模型产生的自然内容）请用 TextRaw 或 NoTranslate 作用域。
 func Text(s string) *Node {
-	return &Node{Kind: KText, Text: s, Style: Style{Opacity: 1}}
+	return &Node{Kind: KText, Text: Tr(s), Style: Style{Opacity: 1}}
 }
 
 // Rich 与 Text 相同，语义别名。
@@ -243,9 +247,9 @@ func VideoSurfaceTick(key string, p *Player) *Node {
 	return Video(p).K(key)
 }
 
-// Button 按钮（可点击）。
+// Button 按钮（可点击）。按钮文案同样过翻译钩子。
 func Button(label string, onClick func()) *Node {
-	n := &Node{Kind: KButton, Text: label, OnClick: onClick, Style: Style{Opacity: 1, CenterY: true}}
+	n := &Node{Kind: KButton, Text: Tr(label), OnClick: onClick, Style: Style{Opacity: 1, CenterY: true}}
 	n.Style.Height = 36
 	n.Style.MinW = 44
 	return n
