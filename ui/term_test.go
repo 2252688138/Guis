@@ -138,6 +138,60 @@ func TestTermScrollback(t *testing.T) {
 	}
 }
 
+// termTopLine 回看状态下视口第一行的文本（未回看时为空）。
+func termTopLine(ts *TermState) string {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	back := len(ts.sc.scrollBack)
+	gy := back - ts.scrollOff
+	if gy < 0 || gy >= back {
+		return ""
+	}
+	return strings.TrimRight(termLineText(ts.sc.scrollBack[gy], ts.sc.cols), " ")
+}
+
+// TestTermWheelDirection 滚轮方向：框架 OnScroll 的 dy 正 = 向下滚（看新内容）。
+func TestTermWheelDirection(t *testing.T) {
+	ts := newTestTerm(10, 2, 50)
+	for i := 0; i < 6; i++ {
+		ts.Feed([]byte("line" + string(rune('0'+i)) + "\r\n"))
+	}
+	// 已贴底，继续向下滚不该翻出历史
+	ts.wheel(wheelStepSize)
+	if off := ts.ScrollOffsetLines(); off != 0 {
+		t.Fatalf("贴底时向下滚，偏移 = %d，期望 0", off)
+	}
+	// 向上滚（dy<0）才是翻历史
+	ts.wheel(-wheelStepSize)
+	up := ts.ScrollOffsetLines()
+	if up <= 0 {
+		t.Fatalf("向上滚后偏移 = %d，期望 > 0", up)
+	}
+	// 向下滚要往回（靠近最新输出），不能继续往历史里钻
+	ts.wheel(wheelStepSize)
+	if off := ts.ScrollOffsetLines(); off >= up {
+		t.Fatalf("向下滚后偏移 = %d，应小于 %d", off, up)
+	}
+}
+
+// TestTermScrollbackAnchoredOnFeed 回看时新输出不能把视口顶走。
+func TestTermScrollbackAnchoredOnFeed(t *testing.T) {
+	ts := newTestTerm(10, 2, 50)
+	for i := 0; i < 6; i++ {
+		ts.Feed([]byte("line" + string(rune('0'+i)) + "\r\n"))
+	}
+	ts.ScrollLines(3)
+	before := termTopLine(ts)
+	if before == "" {
+		t.Fatal("回看状态取不到视口首行")
+	}
+	ts.Feed([]byte("more\r\n"))
+	ts.Feed([]byte("more2\r\n"))
+	if after := termTopLine(ts); after != before {
+		t.Fatalf("新输出把视口顶走了：%q -> %q", before, after)
+	}
+}
+
 func TestTermScrollbackTrim(t *testing.T) {
 	ts := newTestTerm(10, 2, 3)
 	for i := 0; i < 10; i++ {

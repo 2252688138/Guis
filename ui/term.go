@@ -214,6 +214,8 @@ type TermState struct {
 	outSeq    atomic.Uint64
 	title     string
 	scrollOff int
+	// wheelRem 滚轮累计但不足一行的像素残差（高精度滚轮 / 触摸拖动不丢增量）。
+	wheelRem  float32
 	sel       termSelection
 	hoverX    float32
 	hoverY    float32
@@ -283,20 +285,29 @@ func (t *TermState) Feed(p []byte) {
 	t.outSeq.Add(uint64(len(p)))
 	t.mu.Lock()
 	t.ensureLocked()
+	backBefore := len(t.sc.scrollBack)
 	t.sc.feed(p)
 	rep := t.sc.takeReply()
 	title := t.sc.takeTitle()
 	bell := t.sc.takeBell()
-	if d := t.sc.dropped; d > 0 {
+	dropped := t.sc.dropped
+	if dropped > 0 {
 		t.sc.dropped = 0
-		t.sel.shift(d)
+		t.sel.shift(dropped)
 	}
 	if title != "" {
 		t.title = title
 	}
-	// 回看到底时跟住新输出
-	if t.scrollOff > 0 && t.scrollOff > len(t.sc.scrollBack) {
-		t.scrollOff = len(t.sc.scrollBack)
+	// 回看历史时视口要钉在原处：scrollBack 每多出一行（含从队首被挤掉的行，
+	// 那部分行仍算「本次新增」），scrollOff 就同步加一；否则新输出会把用户
+	// 正在看的历史一行行顶走，看起来就是「越滚内容越往前翻」。
+	if t.scrollOff > 0 {
+		if grow := len(t.sc.scrollBack) - backBefore + dropped; grow > 0 {
+			t.scrollOff += grow
+		}
+		if t.scrollOff > len(t.sc.scrollBack) {
+			t.scrollOff = len(t.sc.scrollBack)
+		}
 	}
 	t.mu.Unlock()
 
@@ -891,20 +902,31 @@ func (t *TermState) endDrag() {
 	t.mu.Unlock()
 }
 
-// wheel 滚轮回看（dy 为像素，正 = 看更早的内容）。
+// wheel 滚轮回看。
+//
+// dy 是框架 OnScroll 的契约值（像素量，正 = 向下滚、看更新的内容），
+// 而 ScrollLines 的正方向是「向上看历史」，两者相反，这里必须取反 ——
+// 以前直接 ScrollLines(dy/ch)，滚轮向下翻出来的却是一屏历史，方向正好反了。
 func (t *TermState) wheel(dy float32) {
 	t.mu.Lock()
+	t.ensureLocked()
 	ch := t.cellH
 	if ch <= 0 {
 		ch = 16
 	}
-	lines := int(dy / ch)
-	if lines == 0 && dy != 0 {
-		if dy > 0 {
-			lines = 1
-		} else {
-			lines = -1
-		}
+	// 残差累计 + 四舍五入：精度滚轮 / 触摸拖动的小增量不会因为按行取整被吞掉
+	t.wheelRem += dy
+	lines := int(t.wheelRem / ch)
+	if r := t.wheelRem - float32(lines)*ch; r >= ch/2 {
+		lines++
+	} else if r <= -ch/2 {
+		lines--
+	}
+	t.wheelRem -= float32(lines) * ch
+	if t.wheelRem > ch {
+		t.wheelRem = ch
+	} else if t.wheelRem < -ch {
+		t.wheelRem = -ch
 	}
 	// 应用开启鼠标模式时，滚轮交给应用（vim / less）
 	mouseOn := t.sc.mouse != 0 && t.MouseReports
@@ -912,9 +934,13 @@ func (t *TermState) wheel(dy float32) {
 	cols := t.sc.cols
 	t.mu.Unlock()
 
+	if lines == 0 {
+		return
+	}
 	if mouseOn {
+		// SGR 鼠标上报：64 = 上滚，65 = 下滚（lines 正 = 向下滚）
 		btn := 64
-		if lines < 0 {
+		if lines > 0 {
 			btn = 65
 		}
 		n := lines
@@ -926,7 +952,7 @@ func (t *TermState) wheel(dy float32) {
 		}
 		return
 	}
-	t.ScrollLines(lines)
+	t.ScrollLines(-lines)
 }
 
 // reportMouse 发送 SGR 鼠标序列（1006）。

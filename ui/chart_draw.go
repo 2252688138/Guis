@@ -60,6 +60,19 @@ func (c *Chart) rasterPlot(w, h int, lg chartLayout) []byte {
 		d.radar(c)
 	case ChartScatter:
 		d.scatter(c)
+	case ChartCandle:
+		// 蜡烛本体是原生图元，纹理层只画均线
+		d.candleMA(c)
+	case ChartRose:
+		d.rose(c)
+	case ChartBubble:
+		d.bubble(c)
+	case ChartTimeshare:
+		d.timeshare(c)
+	case ChartFunnel:
+		d.funnel(c)
+	case ChartGauge:
+		d.gauge(c)
 	}
 	return cv.result()
 }

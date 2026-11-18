@@ -66,6 +66,7 @@ func (e *CodeEditorState) OpenReplace() { e.OpenFind(3) }
 
 // CloseFind 关闭查找栏。
 func (e *CodeEditorState) CloseFind() {
+	e.findHistoryPush(e.findText)
 	e.findOpen = false
 	e.replaceFocus = 0
 	e.replaceText = ""
@@ -243,16 +244,20 @@ func (e *CodeEditorState) findFieldRect(r geom.Rect, which int) geom.Rect {
 	rowW := r.W - codeFindPad*2
 	switch which {
 	case 0: // 查找输入框
-		return geom.Rect{X: r.X + codeFindPad, Y: r.Y + 5, W: rowW - codeFindBtnW*4 - 6, H: codeFindRowH - 8}
+		return geom.Rect{X: r.X + codeFindPad, Y: r.Y + 5, W: rowW - codeFindBtnW*6 - 12, H: codeFindRowH - 8}
 	case 1: // 替换输入框
 		return geom.Rect{X: r.X + codeFindPad, Y: r.Y + codeFindRowH + 5,
 			W: r.W - codeFindPad*2 - 74, H: codeFindRowH - 8}
 	case 2: // Aa 区分大小写
-		return geom.Rect{X: r.X + r.W - codeFindPad - codeFindBtnW*4 - 6, Y: r.Y + 4, W: codeFindBtnW, H: codeFindRowH - 6}
+		return geom.Rect{X: r.X + r.W - codeFindPad - codeFindBtnW*6 - 12, Y: r.Y + 4, W: codeFindBtnW, H: codeFindRowH - 6}
+	case 7: // .* 正则查找
+		return geom.Rect{X: r.X + r.W - codeFindPad - codeFindBtnW*5 - 10, Y: r.Y + 4, W: codeFindBtnW, H: codeFindRowH - 6}
+	case 8: // 选区内查找
+		return geom.Rect{X: r.X + r.W - codeFindPad - codeFindBtnW*4 - 8, Y: r.Y + 4, W: codeFindBtnW, H: codeFindRowH - 6}
 	case 3: // 上一个
-		return geom.Rect{X: r.X + r.W - codeFindPad - codeFindBtnW*3 - 4, Y: r.Y + 4, W: codeFindBtnW, H: codeFindRowH - 6}
+		return geom.Rect{X: r.X + r.W - codeFindPad - codeFindBtnW*3 - 6, Y: r.Y + 4, W: codeFindBtnW, H: codeFindRowH - 6}
 	case 4: // 下一个
-		return geom.Rect{X: r.X + r.W - codeFindPad - codeFindBtnW*2 - 2, Y: r.Y + 4, W: codeFindBtnW, H: codeFindRowH - 6}
+		return geom.Rect{X: r.X + r.W - codeFindPad - codeFindBtnW*2 - 4, Y: r.Y + 4, W: codeFindBtnW, H: codeFindRowH - 6}
 	case 5: // 关闭
 		return geom.Rect{X: r.X + r.W - codeFindPad - codeFindBtnW, Y: r.Y + 4, W: codeFindBtnW, H: codeFindRowH - 6}
 	case 6: // 全部替换
@@ -283,6 +288,16 @@ func (e *CodeEditorState) FindPanelClick(x, y float32) bool {
 	case in(e.findFieldRect(r, 2)):
 		e.findCase = !e.findCase
 		e.status(statusCaseText(e.findCase))
+	case in(e.findFieldRect(r, 7)):
+		e.FindRegex = !e.FindRegex
+		if msg := e.FindPatternError(); msg != "" {
+			e.status(msg)
+		} else {
+			e.status(statusRegexText(e.FindRegex))
+		}
+	case in(e.findFieldRect(r, 8)):
+		e.FindInSel = !e.FindInSel
+		e.status(statusInSelText(e.FindInSel))
 	case in(e.findFieldRect(r, 3)):
 		e.Find(e.findText, false)
 	case in(e.findFieldRect(r, 4)):
@@ -309,47 +324,18 @@ func statusCaseText(on bool) string {
 }
 
 // MatchCount 查找串的命中总数（最多统计 9999 处，十万行也不卡输入）。
+// 纯文本与正则、全文与选区内都统一走命中集，计数与跳转永远一致。
 func (e *CodeEditorState) MatchCount() int {
-	if e.findText == "" {
-		return 0
-	}
-	needle := e.findText
-	hay := needle
-	if !e.findCase {
-		needle, hay = strings.ToLower(needle), ""
-		_ = hay
-	}
-	n := 0
-	for _, line := range e.Lines {
-		s := line
-		nd := e.findText
-		if !e.findCase {
-			s = strings.ToLower(s)
-			nd = strings.ToLower(nd)
-		}
-		off := 0
-		for {
-			idx := strings.Index(s[off:], nd)
-			if idx < 0 {
-				break
-			}
-			n++
-			off += idx + len(nd)
-			if n >= 9999 {
-				return n
-			}
-			if off >= len(s) {
-				break
-			}
-		}
-	}
-	return n
+	return len(e.FindHits())
 }
 
 // ReplaceCurrent 替换当前命中（无命中先定位下一个）。
 func (e *CodeEditorState) ReplaceCurrent() bool {
 	if e.ReadOnly || e.findText == "" {
 		return false
+	}
+	if e.FindRegex || e.FindInSel {
+		return e.replaceRegexCurrent()
 	}
 	r, ok := e.Selection()
 	same := false
@@ -378,6 +364,9 @@ func (e *CodeEditorState) ReplaceCurrent() bool {
 func (e *CodeEditorState) ReplaceAll() int {
 	if e.ReadOnly || e.findText == "" {
 		return 0
+	}
+	if e.FindRegex {
+		return e.replaceRegexAll()
 	}
 	type change struct {
 		line     int

@@ -1,4 +1,4 @@
-package ui
+﻿package ui
 
 import "testing"
 
@@ -16,7 +16,7 @@ func TestCodeEditorPlainClickClearsCursors(t *testing.T) {
 	}
 
 	// 普通单击第 3 行第 2 列
-	e.TextClick(7, codeTopPad+2*e.lineH()+2, false)
+	e.TextClick(7, e.topPad()+2*e.lineH()+2, false)
 	if e.CursorCount() != 1 {
 		t.Fatalf("普通单击后应只剩主光标，实际 %d 个", e.CursorCount())
 	}
@@ -28,7 +28,7 @@ func TestCodeEditorPlainClickClearsCursors(t *testing.T) {
 	}
 
 	// Alt+点击仍应新增光标
-	e.TextClick(7, codeTopPad+3*e.lineH()+2, true)
+	e.TextClick(7, e.topPad()+3*e.lineH()+2, true)
 	if e.CursorCount() != 2 {
 		t.Fatalf("Alt+点击应新增一个光标，实际 %d 个", e.CursorCount())
 	}
@@ -45,7 +45,7 @@ func TestCodeEditorMouseDragSelectsFromPressPoint(t *testing.T) {
 	e.SetCaret(CodePos{Line: 0, Col: 0}, false)
 	e.AddCursor(1) // 拖动前残留的额外光标应被收起
 
-	px, py := float32(7), codeTopPad+e.lineH()+2 // 第 2 行第 1 列
+	px, py := float32(7), e.topPad()+e.lineH()+2 // 第 2 行第 1 列
 	e.MouseDrag(px, py)                          // 按下帧
 	if r, ok := e.Selection(); ok {
 		t.Fatalf("按下帧不应产生选区：%+v", r)
@@ -75,7 +75,7 @@ func TestCodeEditorMouseDragJitter(t *testing.T) {
 	viewSetup(e, 400, 300)
 	e.SetCaret(CodePos{Line: 0, Col: 0}, false)
 
-	px, py := float32(7), codeTopPad+e.lineH()+2
+	px, py := float32(7), e.topPad()+e.lineH()+2
 	e.MouseDrag(px, py)
 	e.MouseDrag(px+2, py+1)
 	if r, ok := e.Selection(); ok {

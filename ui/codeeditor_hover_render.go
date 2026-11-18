@@ -121,6 +121,7 @@ func (e *CodeEditorState) setHoverPlainLines(lines []string) {
 
 // setHoverMarkdown 把 gopls 的 Markdown 悬停内容排版成「行 + 类型」。
 func (e *CodeEditorState) setHoverMarkdown(md string) {
+	md = e.translateHoverMarkdown(md)
 	lines, kinds := renderHoverMarkdown(md)
 	if len(lines) == 0 {
 		e.hoverLines, e.hoverKinds = nil, nil

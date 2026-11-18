@@ -187,7 +187,7 @@ func (a *App) paintCodeEditor(n *Node, r geom.Rect) {
 		e.textW = 40
 	}
 	textX := r.X + e.gutterW
-	textY := r.Y + codeTopPad
+	textY := r.Y + e.topPad()
 	e.clampScroll()
 	firstRow, lastRow := e.rowRange(r.H)
 	total := e.sumRows()
@@ -199,6 +199,7 @@ func (a *App) paintCodeEditor(n *Node, r geom.Rect) {
 
 	// ---- 背景 ----
 	a.r.Rect(gpu.Shape{Rect: r, Fill: th.Bg})
+
 	if e.ShowGutter {
 		a.r.Rect(gpu.Shape{Rect: geom.Rect{X: r.X, Y: r.Y, W: e.gutterW, H: r.H}, Fill: th.GutterBg})
 	}
@@ -236,13 +237,20 @@ func (a *App) paintCodeEditor(n *Node, r geom.Rect) {
 	var spans []codeSpan
 	diags := e.allDiagnostics()
 	showFind := e.findOpen && e.findText != ""
-	needle := ""
+	// 查找命中按行建索引：避免每行都从头扫一遍全部命中（大文件下是 O(行×命中)）
+	var findByLine map[int][][2]int
 	if showFind {
-		needle = e.findText
-		if !e.findCase {
-			needle = strings.ToLower(needle)
+		if hits := e.FindHits(); len(hits) > 0 {
+			findByLine = make(map[int][][2]int, 64)
+			for _, h := range hits {
+				ln := h.Range.Start.Line
+				findByLine[ln] = append(findByLine[ln], [2]int{h.Range.Start.Col, h.Range.End.Col})
+			}
 		}
 	}
+
+	// 括号匹配高亮：光标处括号与配对括号同时垫底色（每帧最多计算一次）
+	bmA, bmB, bmOK := e.matchPairCached()
 
 	for row := firstRow; row <= lastRow; row++ {
 		line, seg := e.lineOfRow(row)
@@ -260,6 +268,9 @@ func (a *App) paintCodeEditor(n *Node, r geom.Rect) {
 			info, next := e.cache.get(e, line, state)
 			state = next
 			spans = e.mergeSemanticSpans(line, info.spans)
+			if e.isLongLine(line) {
+				spans = nil // 超长行跳过着色切片（否则每帧上万次测宽）
+			}
 			lastLine = line
 		}
 
@@ -307,6 +318,24 @@ func (a *App) paintCodeEditor(n *Node, r geom.Rect) {
 					}
 					a.r.Rect(gpu.Shape{Rect: geom.Rect{X: x, Y: y + 2, W: 1, H: lh - 4}, Fill: th.IndentGuide})
 				}
+			}
+		}
+
+		// 括号匹配：给匹配的两个括号垫半透明底，不改文字色（不干扰语法高亮）
+		if bmOK && (line == bmA.Line || line == bmB.Line) {
+			bp := bmA
+			if line == bmB.Line {
+				bp = bmB
+			}
+			runes := []rune(e.line(line))
+			if bp.Col >= 0 && bp.Col < len(runes) {
+				bw := e.measure(string(runes[bp.Col]))
+				if bw < 4 {
+					bw = e.measure("M")
+				}
+				bx := baseX + e.xOfCol(line, bp.Col)
+				a.r.Rect(gpu.Shape{Rect: geom.Rect{X: bx - 1, Y: y + 1, W: bw + 2, H: lh - 2},
+					Radius: [4]float32{2, 2, 2, 2}, Fill: C("rgba(120,170,255,0.28)")})
 			}
 		}
 
@@ -358,22 +387,10 @@ func (a *App) paintCodeEditor(n *Node, r geom.Rect) {
 			a.r.Rect(gpu.Shape{Rect: geom.Rect{X: baseX + e.xOfCol(line, c0), Y: y + lh - 3, W: w, H: 2}, Fill: col})
 		}
 
-		// 查找高亮（当前段的命中）
+		// 查找高亮（当前段的命中；纯文本 / 正则共用同一命中集）
 		if showFind {
-			hay := e.line(line)
-			low := hay
-			if !e.findCase {
-				low = strings.ToLower(hay)
-			}
-			for off := 0; off < len(low); {
-				idx := strings.Index(low[off:], needle)
-				if idx < 0 {
-					break
-				}
-				b := off + idx
-				col0 := runeLen(hay[:b])
-				col1 := col0 + runeLen(e.findText)
-				off = b + len(needle)
+			for _, rg := range findByLine[line] {
+				col0, col1 := rg[0], rg[1]
 				if col1 <= from || col0 >= to {
 					continue
 				}
@@ -441,6 +458,11 @@ func (a *App) paintCodeEditor(n *Node, r geom.Rect) {
 			y := textY + float32(row)*lh - e.ScrollY
 			num := strconv.Itoa(line + 1)
 			w := f.Measure(num)
+			// 书签圆点
+			if e.HasBookmark(line) {
+				a.r.Rect(gpu.Shape{Rect: geom.Rect{X: r.X + 4, Y: y + lh/2 - 2, W: 4, H: 4},
+					Radius: [4]float32{2, 2, 2, 2}, Fill: C("rgba(255,196,0,0.85)")})
+			}
 			col := th.GutterText
 			if line == e.Pos.Line {
 				col = th.GutterActive
@@ -530,6 +552,11 @@ func (a *App) paintCodeEditor(n *Node, r geom.Rect) {
 		mr := geom.Rect{X: r.Right() - minimapW - scrollW, Y: r.Y, W: minimapW, H: r.H}
 		a.r.Rect(gpu.Shape{Rect: mr, Fill: th.MinimapBg})
 		e.paintMinimap(a, mr)
+	}
+
+	// ---- 面包屑（顶部结构路径；最后画，避免被行高亮 / 文本裁剪盖住）----
+	if e.breadcrumbH() > 0 {
+		e.paintBreadcrumb(a, r, a.fonts.getFamily(12, 400, e.FontFamily), th.Text, C("#388bfd"))
 	}
 
 	// ---- 浮层 ----

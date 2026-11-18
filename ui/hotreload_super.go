@@ -52,6 +52,10 @@ const (
 	hotStopTimeout = 3 * time.Second
 	// hotCrashWindow 子进程启动后这么短时间内就退出，视为「起不来」而不是用户关窗。
 	hotCrashWindow = 2500 * time.Millisecond
+	// hotSnapshotWait 交接前让旧进程立刻落盘现场（saveonly）的等待上限。
+	hotSnapshotWait = 800 * time.Millisecond
+	// hotPrewarmWait 等待预热的新进程画完首帧的上限；超时就不再等，直接交接。
+	hotPrewarmWait = 5 * time.Second
 )
 
 // hotReloadSupervise 守护进程主循环：编译 → 起子进程 → 监听源码 → 重启。
@@ -123,23 +127,50 @@ func hotReloadSupervise() error {
 	// launch 用新编译的 exe 替换当前窗口。buildStart 为本次编译开始的时刻：
 	// 编译期间又到的改动没有被这次编译包含，要保留 dirty 再编一轮，否则会「丢掉一次修改」。
 	launch := func(exe string, buildStart time.Time) bool {
-		if old := getCur(); old != nil {
-			if w.changedAfter(buildStart) {
-				hotLog("编译期间源码又有改动，将再编译一次")
-			} else {
-				// 这批保存已经被编进新 exe，清掉标记，免得空转重启。
-				w.take()
+		old := getCur()
+		if old == nil {
+			// 首次启动：没有旧窗口可以交接，直接正常显示。
+			c := hotSpawn(exe, stateFile, "")
+			setCur(c)
+			if c == nil {
+				return false
 			}
-			if gap := hotMinRestartGap - time.Since(lastRestart); gap > 0 {
-				time.Sleep(gap)
-			}
-			old.stop()
+			lastRestart = time.Now()
+			return true
 		}
-		c := hotSpawn(exe, stateFile)
-		setCur(c)
+		if w.changedAfter(buildStart) {
+			hotLog("编译期间源码又有改动，将再编译一次")
+		} else {
+			// 这批保存已经被编进新 exe，清掉标记，免得空转重启。
+			w.take()
+		}
+		if gap := hotMinRestartGap - time.Since(lastRestart); gap > 0 {
+			time.Sleep(gap)
+		}
+		// 旧窗口此刻还留着：先让它把最新的窗口几何与业务状态落盘（saveonly 不退出），
+		// 预热起来的新进程就能直接恢复到用户眼前这个位置，而不是上一轮的位置。
+		old.snapshot(stateFile, hotSnapshotWait)
+
+		// 预热交接：新进程隐藏建窗 → 画完首帧（写就绪文件）→ 显示新窗口 → 才关旧窗口。
+		// 顺序反过来（先关后开）就是原来那种「窗口消失一下再出现」的观感。
+		ready := filepath.Join(dir, fmt.Sprintf("ready-%d", gen))
+		_ = os.Remove(ready)
+		c := hotSpawn(exe, stateFile, ready)
 		if c == nil {
+			hotLog("新进程启动失败，保留当前界面继续运行")
 			return false
 		}
+		if !c.waitReady(ready, hotPrewarmWait) {
+			if !c.alive() {
+				hotLog("新进程未画出首帧就退出，保留当前界面继续运行")
+				return false
+			}
+			hotLog("预热超时（%dms），直接交接", hotPrewarmWait.Milliseconds())
+		}
+		// 先亮新窗口、再关旧窗口：两者几何一致，屏幕上不会出现空白。
+		c.show()
+		old.stop()
+		setCur(c)
 		lastRestart = time.Now()
 		return true
 	}
@@ -214,7 +245,10 @@ type hotChild struct {
 }
 
 // hotSpawn 启动一个子进程（继承当前工作目录，输出直通终端）。
-func hotSpawn(exe, stateFile string) *hotChild {
+//
+// readyFile 非空时以「预热交接」模式启动：子进程先隐藏建窗、画完首帧后写该文件，
+// 守护进程轮询到它再下达 show，从而做到新窗口就绪之后才关旧窗口。
+func hotSpawn(exe, stateFile, readyFile string) *hotChild {
 	cmd := exec.Command(exe)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	in, err := cmd.StdinPipe()
@@ -223,6 +257,9 @@ func hotSpawn(exe, stateFile string) *hotChild {
 		return nil
 	}
 	cmd.Env = append(os.Environ(), hotEnvChild+"=1", hotEnvState+"="+stateFile)
+	if readyFile != "" {
+		cmd.Env = append(cmd.Env, hotEnvPrewarm+"=1", hotEnvReady+"="+readyFile)
+	}
 	hotCmdAttrs(cmd)
 	if err := cmd.Start(); err != nil {
 		hotLog("启动子进程失败：%v", err)
@@ -235,6 +272,88 @@ func hotSpawn(exe, stateFile string) *hotChild {
 		close(c.done)
 	}()
 	return c
+}
+
+// send 向子进程控制通道写一条指令（save / saveonly / show / quit）。
+func (c *hotChild) send(cmd string) bool {
+	if c == nil || c.stdin == nil {
+		return false
+	}
+	_, err := io.WriteString(c.stdin, cmd+"\n")
+	return err == nil
+}
+
+// alive 子进程是否还在运行。
+func (c *hotChild) alive() bool {
+	if c == nil {
+		return false
+	}
+	select {
+	case <-c.done:
+		return false
+	default:
+		return true
+	}
+}
+
+// snapshot 让子进程立刻保存现场但不退出（交接前刷新 state.json）。
+//
+// 用 stateFile 的修改时间判断是否真的写完；超时直接返回，不阻塞交接。
+func (c *hotChild) snapshot(stateFile string, timeout time.Duration) {
+	if c == nil || !c.alive() || stateFile == "" {
+		return
+	}
+	before := hotFileModTime(stateFile)
+	if !c.send("saveonly") {
+		return
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if hotFileModTime(stateFile).After(before) {
+			return
+		}
+		select {
+		case <-c.done:
+			return
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+// waitReady 轮询就绪文件：子进程画完首帧写好该文件即返回 true。
+func (c *hotChild) waitReady(readyFile string, timeout time.Duration) bool {
+	if c == nil {
+		return false
+	}
+	exists := func() bool {
+		_, err := os.Stat(readyFile)
+		return err == nil
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if exists() {
+			return true
+		}
+		select {
+		case <-c.done:
+			// 进程已经退出：可能刚好写完就绪文件，再确认一次。
+			return exists()
+		case <-time.After(15 * time.Millisecond):
+		}
+	}
+	return exists()
+}
+
+// show 让预热中的子进程把窗口显示出来（实际 SetVisible 在它的 UI 线程执行）。
+func (c *hotChild) show() { c.send("show") }
+
+// hotFileModTime 文件修改时间；文件不存在时返回零值。
+func hotFileModTime(path string) time.Time {
+	st, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}
+	}
+	return st.ModTime()
 }
 
 // stop 通知子进程保存现场并退出；超时则强杀。

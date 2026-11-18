@@ -169,6 +169,12 @@ func (a *App) activateFocused() bool {
 		n.OnActivate()
 		return true
 	}
+	// 文本编辑类控件（输入框 / 文本域 / 富文本 / 代码编辑器）不参与 Enter / Space 激活：
+	// 它们的 OnClick 语义是「点哪里就把光标放哪里」，键盘激活会把光标挪到鼠标
+	// 当前所指的位置，接着输入的字符就插到指针下面，而不是原光标处。
+	if n.OnChar != nil {
+		return false
+	}
 	if n.OnClick != nil {
 		n.OnClick()
 		return true

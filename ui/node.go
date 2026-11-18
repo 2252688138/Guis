@@ -72,6 +72,10 @@ type Node struct {
 	RichOpts RichTextOptions
 	// rich 布局阶段写入的折行/片段数据（绘制与命中共用）。
 	rich richLayoutData
+	// anim 组件动画效果（见 anim_widget.go）：绘制时整棵子树一起平移/缩放/淡入。
+	anim []AnimSpec
+	// animReplay 本帧要求一次性动画从头再播（由 Node.Replay() 置位）。
+	animReplay bool
 	// OnSpanClick 富文本片段点击回调（链接命中）。
 	OnSpanClick func(TextSpan)
 	// OnActivate 键盘 Enter/Space 激活回调（无则回退 OnClick）。

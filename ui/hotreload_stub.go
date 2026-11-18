@@ -22,6 +22,15 @@ func hotReloadEnterRun() (bool, error) { return false, nil }
 // hotStopRequested 移动端与浏览器端不会收到热重载退出请求。
 func hotStopRequested() bool { return false }
 
+// hotHoldVisible 预热交接只在桌面端热重载里存在；其余平台窗口照常直接显示。
+func hotHoldVisible() bool { return false }
+
+// hotShowRequested 非桌面平台没有预热窗口等 show。
+func hotShowRequested() bool { return false }
+
+// hotPrewarmShown 非桌面平台没有预热窗口。
+func hotPrewarmShown() {}
+
 // hotApplyRestore 非桌面平台没有跨进程现场可恢复。
 func hotApplyRestore(a *App) {}
 

@@ -123,3 +123,51 @@ ui.FormatNumber(12345.678, 2)             // "12,345.68"
 
 `cmd/gallery/pages/case_suite.go` 里集中演示了 Toast / Notify / 引导 / 骨架屏 / FLIP /
 错峰入场（`--case basic` 或 `--case suite` 打开）。
+
+## 10. 组件动画（绑定到节点）
+
+`Node.Anim(...)` 给任意节点绑一组效果：绘制期压一层顶点变换，位移 / 缩放 / 旋转 /
+透明度一起作用到文字、图标、图片与底板（见 `gpu.PushAnim`），布局完全不受影响。
+
+```go
+// 入场（一次性，节点首次出现时开始）
+ui.Card(...).Anim(ui.SlideIn(ui.SideBottom, 24, 0.3), ui.FadeIn(0.3))
+ui.Dialog(...).Anim(ui.PopIn(0.35))
+ui.Row(...).Anim(ui.FlipInX(0.3))          // 横展开
+ui.Row(...).Anim(ui.RotateIn(0.3))         // 从 -20° 转正
+ui.Icon(...).Anim(ui.Spin(1.2))            // 循环旋转（一圈 1.2 秒）
+ui.Bell(...).Anim(ui.Swing(0.6))           // 绕上边缘摆动
+ui.Btn(...).Anim(ui.Jello(0.5))            // 果冻
+ui.HeartBadge.Anim(ui.Heartbeat(0.8))      // 心跳
+ui.KPI.Anim(ui.Tada(0.7))                  // 强调
+ui.Led.Anim(ui.Flash(0.6))                 // 闪烁提示
+ui.Panel.Anim(ui.DropIn(28, 0.45))         // 落下（自带回弹）
+ui.Toolbar.Anim(ui.RubberBand(0.6))        // 橡皮筋
+ui.Dot.Anim(ui.Pulse(1.4).Amount(0.08))    // 呼吸（循环）
+ui.Icon.Anim(ui.FloatY(6, 2))              // 漂浮（循环）
+if bad { ui.Field(...).Anim(ui.Shake(0.4)).Replay() }  // 抖一下（可重复触发）
+```
+
+出场：`*Out` 系列从终态退到 0，配合 `Present` 保留期使用——关闭后再留一会儿，
+退场动画播完才真正消失（Dialog / Drawer / Modal / Toast / Tooltip 已内置这套做法）：
+
+```go
+if ui.Present("dlg", open, 0.2) {                       // 关闭后仍返回 true 0.2 秒
+    ui.ModalPanel(o).Anim(ui.PopIn(0.2)).AnimIf(!open, ui.PopOut(0.2))
+}
+node.AnimIf(cond, ui.FadeOut(0.2), ui.SlideOut(ui.SideBottom, 16, 0.2))
+ui.PresentLeaving("dlg")                                // 是否正处于退场期
+```
+
+其它接口：`AnimIf / NoAnim / Replay / HasAnim`、微调 `DelayBy / With / Amount /
+From / Distance / At / Angle / Pivot`、全局清空 `ui.ResetWidgetAnims()`。
+强调类效果（`Shake / Bounce / Swing / Jello / Heartbeat / Tada / Flash / RubberBand`）
+默认只播一次、播完收幅停在终态；想让它一直动就加 `.LoopOn()`（`.Once()` 改回单次）：
+
+```go
+ui.Icon(...).Anim(ui.Swing(0.8).LoopOn())     // 一直摆
+ui.Led(...).Anim(ui.Flash(1.2).LoopOn())      // 一直闪
+```
+
+系统开启「减弱动态效果」时所有效果直接落到终态。
+

@@ -280,12 +280,23 @@ type Player struct {
 	AutoHide bool
 	// HideControls 不显示控制条（纯画面）。
 	HideControls bool
-	// Fullscreen 播放器铺满窗口（VideoPlayer 需放在根 Stack 中才会铺满整窗）。
+	// Fullscreen 铺满整窗：VideoPlayer 通过窗口根层 portal 渲染，嵌在固定高度 /
+	// Clipped 面板里也能真全屏（需要系统窗口全屏请用 ToggleFullscreen）。
 	Fullscreen bool
 
 	// ShowControls 之外的展示项
 	// Subtitle 底部字幕（空则不显示；中间的「·」等符号照常渲染）
 	Subtitle string
+	// Cover 封面图（本地图片路径：PNG/JPEG/BMP/GIF）。停在起点（未开始播放）时铺满
+	// 画面并压一层暗色渐变，点击封面直接开始播放；开播后自动隐藏。
+	Cover string
+	// CoverTitle / CoverSub 封面上的标题与副标题（可选，显示在左下角）。
+	CoverTitle string
+	CoverSub   string
+	// HideEndedOverlay 播放结束时不显示「重播」遮罩（默认显示）。
+	HideEndedOverlay bool
+	// ShowInfo 画面左上角显示分辨率 / 时间 / 倍速 / 旋转等信息（I 键切换）。
+	ShowInfo bool
 
 	// 回调
 	OnPlay       func()

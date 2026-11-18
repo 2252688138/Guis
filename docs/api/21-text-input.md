@@ -3,7 +3,7 @@
 
 ## 1. 输入控件已经处理好的事
 
-`ui.Input` / `PasswordInput` / `Textarea` / `NumberInput` / `SearchInput` / `Composer` 内部都用
+`ui.Input` / `PasswordInput` / `Textarea` / `NumberInput` / `SearchInput` 内部都用
 `ui.TextSel` 维护「文本 + 光标 + 选区锚点」，开箱支持：
 
 * 点击定位光标、拖选、双击选中、Shift+方向键扩选

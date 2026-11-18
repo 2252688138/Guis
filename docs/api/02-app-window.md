@@ -28,6 +28,7 @@ func view() *ui.Node {
 | `SetCornerRadius(v)` / `CornerRadius()` | 窗口圆角（逻辑像素，`<=0` 取消） |
 | `SetAlwaysOnTop(v)` / `IsAlwaysOnTop()` | 置顶 |
 | `HWND()` | 原生句柄（Windows HWND / X11 Window / NSView* / ANativeWindow*） |
+| `Bounds()` / `SetBounds(x, y, w, h)` | 读 / 写窗口在屏幕上的位置与尺寸（物理像素，仅 Windows 后端实现；`Bounds` 的 `ok=false` 表示后端不支持）。多窗口应用用它记住独立子窗口的位置，下次在原地打开 |
 | `Close()` | 关闭（会经过 `SetOnClose` 拦截） |
 | `Quit()` | 退出，**跳过**关闭拦截（托盘菜单「退出」用它） |
 | `Dispose()` | 立刻释放资源（一般不用手调） |

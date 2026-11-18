@@ -217,8 +217,9 @@ func (e *CodeEditorState) foldsIn(from, to int) []codeFold {
 	return out
 }
 
-// computeFolds 扫描文档生成可折叠区间（按 { } 配对，支持嵌套）。
+// computeFolds 扫描文档生成可折叠区间（{}、()、[] 配对，支持嵌套）。
 // 结果按起始行升序；折叠状态变化后同步重建 hidden 前缀表。
+// Go 的 import ( ) / var ( ) / 多行参数列表都靠圆括号折叠，只认 {} 会漏掉一大半。
 func (e *CodeEditorState) computeFolds() []codeFold {
 	if e.foldsReady {
 		return e.folds
@@ -226,7 +227,11 @@ func (e *CodeEditorState) computeFolds() []codeFold {
 	e.foldsReady = true
 	folds := make([]codeFold, 0, 64)
 	// 单趟扫描：跳过字符串 / 行注释，不分配临时字符串（十万行也不能每次输入都卡）。
-	var stack []int
+	type foldOpen struct {
+		line int
+		ch   rune
+	}
+	var stack []foldOpen
 	for i := 0; i < len(e.Lines); i++ {
 		line := e.Lines[i]
 		var quote rune
@@ -255,14 +260,25 @@ func (e *CodeEditorState) computeFolds() []codeFold {
 				if j < len(line) && line[j] == '/' {
 					j = len(line)
 				}
-			case '{':
-				stack = append(stack, i)
-			case '}':
-				if len(stack) == 0 {
+			case '{', '(', '[':
+				stack = append(stack, foldOpen{i, r})
+			case '}', ')', ']':
+				want := '{'
+				if r == ')' {
+					want = '('
+				} else if r == ']' {
+					want = '['
+				}
+				// 自顶向下找最近的同类开括号：中间夹着未闭合的另一种括号时容错
+				k := len(stack) - 1
+				for k >= 0 && stack[k].ch != want {
+					k--
+				}
+				if k < 0 {
 					continue
 				}
-				start := stack[len(stack)-1]
-				stack = stack[:len(stack)-1]
+				start := stack[k].line
+				stack = stack[:k]
 				if i > start {
 					folds = append(folds, codeFold{Start: start, End: i})
 				}
@@ -270,9 +286,10 @@ func (e *CodeEditorState) computeFolds() []codeFold {
 		}
 	}
 	last := len(e.Lines) - 1
-	for _, start := range stack {
-		if last > start {
-			folds = append(folds, codeFold{Start: start, End: last})
+	// 未闭合的 { 折叠到文档末尾；未闭合的 ( / [ 不折叠（参数列表折行很常见，避免误报）
+	for _, op := range stack {
+		if op.ch == '{' && last > op.line {
+			folds = append(folds, codeFold{Start: op.line, End: last})
 		}
 	}
 	sort.Slice(folds, func(i, j int) bool { return folds[i].Start < folds[j].Start })
@@ -579,7 +596,7 @@ func (e *CodeEditorState) rowRange(h float32) (int, int) {
 	if first < 0 {
 		first = 0
 	}
-	rows := int((h-codeTopPad*2)/lh) + 2
+	rows := int((h-e.topPad()*2)/lh) + 2
 	return first, first + rows
 }
 
@@ -603,7 +620,7 @@ func (e *CodeEditorState) lineRange(h float32) (int, int, int) {
 // posAtXY 节点内坐标 → 文档位置（软换行按段换算列）。
 func (e *CodeEditorState) posAtXY(x, y float32) CodePos {
 	lh := e.lineH()
-	row := int((y - codeTopPad + e.ScrollY) / lh)
+	row := int((y - e.topPad() + e.ScrollY) / lh)
 	if row < 0 {
 		row = 0
 	}
@@ -733,7 +750,7 @@ func (e *CodeEditorState) hitZone(x, y float32) codeHitKind {
 		return codeHitScrollH
 	}
 	if e.ShowGutter && x < g.gutter.W {
-		row := int((y - codeTopPad + e.ScrollY) / e.lineH())
+		row := int((y - e.topPad() + e.ScrollY) / e.lineH())
 		line, _ := e.lineOfRow(row)
 		if _, ok := e.foldMarkRect(line, y); ok && x >= g.gutter.W-16 {
 			return codeHitFoldMark

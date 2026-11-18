@@ -15,8 +15,8 @@ import (
 // 关窗竞态、后台 goroutine 调用、无 GL 上下文的平台都会走到这些路径。
 func TestTrimNilSafe(t *testing.T) {
 	var a *App
-	a.trimCaches(true) // nil App
-	(&App{}).trimCaches(false)
+	a.trimCaches(true, false) // nil App
+	(&App{}).trimCaches(false, false)
 	(&App{}).chartReleaseAll()
 	(&App{}).chartReleaseIdle()
 	(&imageTextures{}).releaseAll(nil)

@@ -31,18 +31,50 @@ const (
 	ChartRadar
 	// ChartScatter 散点图。
 	ChartScatter
+	// ChartCandle K 线图（开高低收蜡烛，可叠加均线）。
+	ChartCandle
+	// ChartBarH 水平条形图（值轴在 X，类目沿 Y）。
+	ChartBarH
+	// ChartHistogram 直方图（样本自动分桶）。
+	ChartHistogram
+	// ChartRose 瑰图（南丁格尔）。
+	ChartRose
+	// ChartBubble 气泡图（散点 + 半径维度）。
+	ChartBubble
+	// ChartWaterfall 瀑布图（逐步增减）累计）。
+	ChartWaterfall
+	// ChartBox 箱线图（五数概括）。
+	ChartBox
+	// ChartTimeshare 分时图（价格线 + 基准线填充）。
+	ChartTimeshare
+	// ChartHeatmap 热力图（行列色块）。
+	ChartHeatmap
+	// ChartFunnel 漏斗图（逐层收窄）。
+	ChartFunnel
+	// ChartGauge 仪表盘（270° 弧，单值）。
+	ChartGauge
 )
 
 // Series 一条数据系列。
 //
 // 折线 / 面积 / 柱状 / 雷达：Values 为等距采样值（雷达图按 Labels 的轴顺序取值）；
-// 散点：Values 为 Y，X 为可选横坐标（为空时用下标）。
+// 散点：Values 为 Y，X 为可选横坐标（为空时用下标）；
+// K 线：Candles 为蜡烛序列（Values / X 忽略）。
 // 饼图 / 环形图：每个 Series 是一个扇区，取其 Values 之和。
 type Series struct {
-	Name   string
-	Color  string
-	Values []float64
-	X      []float64
+	Name    string
+	Color   string
+	Values  []float64
+	X       []float64
+	Candles []Candle
+	// Z 气泡图半径维度（仅 ChartBubble，与 Values 一一对应）。
+	Z []float64
+}
+
+// Candle 一根 K 线：开高低收（Volume 可选，框架不参与绘制）。
+type Candle struct {
+	Open, High, Low, Close float64
+	Volume                 float64
 }
 
 // Chart 图表数据与配置，由业务持有（与 Player 一样不要每帧新建）。
@@ -69,6 +101,29 @@ type Chart struct {
 	Smooth bool
 	// Donut 环形图内径比例（0~0.9，仅 ChartDonut 生效）。
 	Donut float32
+	// CandleUp / CandleDown K 线涨 / 跌配色（仅 ChartCandle；留空用默认红涨绿跌）。
+	CandleUp, CandleDown string
+	// MA 均线周期，如 []int{5, 10, 20}（仅 ChartCandle；留空不画）。
+	MA []int
+	// ShowVolume 是否在 K 线下方叠一块量能副图（仅 ChartCandle）。
+	ShowVolume bool
+	// VolumeRatio 量能副图高度占比（默认 0.24，仅 ChartCandle + ShowVolume）。
+	VolumeRatio float32
+
+	// Interactive 开启后该图表吃鼠标交互（滚轮缩放 / 拖拽平移 / 图例点击隐藏 /
+	// 十字光标），见 chart_interact.go。默认关闭：页面滚动不受影响。
+	Interactive bool
+
+	// candleStep K 线自动纵轴的整步长（candleRange 计算，candleTicks 使用）。
+	candleStep float64
+	// Bins 直方图分桶数（默认 12，仅 ChartHistogram）。
+	Bins int
+	// Cols 热力图列数（默认按样本数开平方，仅 ChartHeatmap）。
+	Cols int
+
+	// histCounts / histEdges 直方图本帧的分桶结果（updateHistogram 刷新）。
+	histCounts [][]float64
+	histEdges  []float64
 	// Min / Max 纵轴范围；Max 为 0 表示自动（Min 可为负值）。
 	Min, Max float64
 	// YTicks 纵轴刻度数（默认 4）。
@@ -174,6 +229,65 @@ func ScatterChart(key string, series ...Series) *Node {
 	return ChartView(key, NewChart(ChartScatter, nil, series...))
 }
 
+// CandleChart K 线图：candles 每项一根蜡烛，labels 为横轴标签（如日期，可少传）。
+//
+// 需要均线时设 chart.MA = []int{5, 10, 20}；
+// 需要自定义涨跌配色时设 chart.CandleUp / chart.CandleDown。
+func CandleChart(key string, labels []string, candles ...Candle) *Node {
+	return ChartView(key, NewChart(ChartCandle, labels, Series{Candles: candles}))
+}
+
+// BarHChart 水平条形图（排行条）：值轴在 X，Labels 为类目名。
+func BarHChart(key string, labels []string, series ...Series) *Node {
+	return ChartView(key, NewChart(ChartBarH, labels, series...))
+}
+
+// HistogramChart 直方图：Series.Values 是原始样本，自动分桶（Bins 控制桶数）。
+func HistogramChart(key string, series ...Series) *Node {
+	return ChartView(key, NewChart(ChartHistogram, nil, series...))
+}
+
+// RoseChart 瑰图（南丁格尔）：每个 Series 一个扇区，半径按数值缩放。
+func RoseChart(key string, labels []string, series ...Series) *Node {
+	return ChartView(key, NewChart(ChartRose, labels, series...))
+}
+
+// BubbleChart 气泡图：Series.X 横坐标、Values 纵坐标、Z 气泡半径。
+func BubbleChart(key string, series ...Series) *Node {
+	return ChartView(key, NewChart(ChartBubble, nil, series...))
+}
+
+// WaterfallChart 瀑布图：Values 为各步增减量（可正可负），Chart.Min 为累计起点。
+func WaterfallChart(key string, labels []string, series ...Series) *Node {
+	return ChartView(key, NewChart(ChartWaterfall, labels, series...))
+}
+
+// BoxChart 箱线图：每个 Series 一个箱，Values 为 5 个数
+// [min, Q1, 中位, Q3, max]（多于 5 个时当原始样本自动统计）。
+func BoxChart(key string, labels []string, series ...Series) *Node {
+	return ChartView(key, NewChart(ChartBox, labels, series...))
+}
+
+// TimeshareChart 分时图：Chart.Min 作为基准线（如昨收），价格线与基准之间填充。
+func TimeshareChart(key string, labels []string, series ...Series) *Node {
+	return ChartView(key, NewChart(ChartTimeshare, labels, series...))
+}
+
+// HeatmapChart 热力图：Series.Values 按行优先铺成矩阵，Cols 控制列数（默认方形）。
+func HeatmapChart(key string, series ...Series) *Node {
+	return ChartView(key, NewChart(ChartHeatmap, nil, series...))
+}
+
+// FunnelChart 漏斗图：每个 Series 一层，Labels 为层名。
+func FunnelChart(key string, labels []string, series ...Series) *Node {
+	return ChartView(key, NewChart(ChartFunnel, labels, series...))
+}
+
+// GaugeChart 仪表盘：取 Series[0].Values[0]，Chart.Min / Max 为量程（默认 0~100）。
+func GaugeChart(key string, series ...Series) *Node {
+	return ChartView(key, NewChart(ChartGauge, nil, series...))
+}
+
 // PieSeries 把数值切片摊成扇区系列（名称取 labels[i]，颜色走调色板）。
 // 饼图 / 环形图可先用它构造 Series，再交给 NewChart。
 func PieSeries(values []float64, labels []string) []Series {
@@ -218,10 +332,25 @@ func (c *Chart) dataMax() float64 {
 
 // points 采样点数量（取最长系列）。
 func (c *Chart) points() int {
+	if c.Type == ChartHistogram {
+		if c.Bins > 0 {
+			return c.Bins
+		}
+		return 12
+	}
+	if c.Type == ChartBox || c.Type == ChartFunnel {
+		return len(c.Series)
+	}
+	if c.Type == ChartGauge {
+		return 1
+	}
 	n := len(c.Labels)
 	for _, s := range c.Series {
 		if len(s.Values) > n {
 			n = len(s.Values)
+		}
+		if len(s.Candles) > n {
+			n = len(s.Candles)
 		}
 	}
 	return n

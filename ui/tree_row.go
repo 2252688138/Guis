@@ -52,6 +52,13 @@ func buildTreeRow(opts TreeOptions, n TreeNode, depth int, open bool, sel string
 	}
 	if !n.Disabled {
 		row.Tap(func() {
+			// 双击 = 同树同节点 600ms 内二次点击：只走 OnOpen（打开编辑器等），
+			// 不再重复展开切换 / 触发 OnPick，避免双击多插入一条引用。
+			if opts.OnOpen != nil && treeIsDoubleClick(opts.Key, n.Key) {
+				opts.OnOpen(n)
+				RequestRedraw()
+				return
+			}
 			if hasKids {
 				m := treeOpen[opts.Key]
 				if m == nil {

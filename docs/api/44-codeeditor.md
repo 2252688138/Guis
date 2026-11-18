@@ -244,8 +244,51 @@ if err := srv.Start(); err == nil {
 | `F8` | 下一条诊断 |
 | `F12` / `F2` / `F1` | 定义 / 重命名 / 悬停 |
 | `Shift+Alt+F` | 格式化文档 |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+滚轮` | 字号放大 / 缩小 |
+| `Ctrl+Shift+O` | 符号大纲（输入过滤，↑↓ 选择，Enter 跳转） |
+| `Ctrl+Shift+L` | 查找面板内：全部匹配转多光标 |
+| `Ctrl+F2` | 切换当前行书签 |
+| `Alt+F2` / `Shift+Alt+F2` | 下一个 / 上一个书签 |
+| `Alt+↑` / `Alt+↓`（查找面板内） | 翻搜索历史 |
 
-## 13. 示例
+## 13. 编辑增强与结构导航
+
+这些能力都带独立开关，关掉后行为与旧版完全一致（便于宿主按场景关闭）。
+
+```go
+ed.AutoPair = true         // 输入 ( [ { " ' 自动补右符号；有选区时转为「包裹选区」
+ed.AutoIndentPaste = true  // 多行粘贴跟随当前行缩进（空行不补空白）
+ed.BracketMatchHL = true   // 光标处括号与配对括号同时高亮（扫描上限 2000 行 / 100KB）
+ed.ShowBreadcrumb = true   // 顶部面包屑：文件 › 类型 › 函数，点击可回跳
+ed.MinFontSize, ed.MaxFontSize = 8, 40 // 字号缩放范围
+ed.LongLineLimit = 4096    // 单行 rune 超此值时跳过着色（避免超长行拖死绘制）
+```
+
+查找面板新增两个开关按钮：
+
+| 按钮 | 含义 |
+| --- | --- |
+| `Aa` | 区分大小写 |
+| `.*` | 正则查找（替换支持 `$1` / `${name}` 捕获组） |
+| `⊂` | 只在当前选区内查找 / 替换 |
+
+* 命中集统一（纯文本 / 正则 / 选区内共用），计数、跳转、替换、高亮四者永远一致；
+* 输入非法正则时面板提示「正则有误」而不是静默失败；
+* `FindRegex` / `FindInSel` / `FindHits()` / `MatchIndex()` 均可由宿主直接读写。
+
+结构导航 API：
+
+```go
+for _, s := range ed.ScanSymbols() { /* s.Name / s.Kind / s.Line / s.Depth */ }
+ed.ToggleOutline()          // 符号大纲面板
+ed.BreadcrumbPath()         // 光标处作用域链
+ed.ToggleBookmark()         // Ctrl+F2
+ed.NextBookmark(1)          // Alt+F2
+ed.FoldState()              // 折叠块起始行，便于随会话持久化
+ed.SetFoldState([]int{12})  // 恢复折叠（非法行号静默忽略）
+```
+
+## 14. 示例
 
 ```bash
 go run ./cmd/gallery --case code

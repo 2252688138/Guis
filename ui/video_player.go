@@ -8,7 +8,6 @@ package ui
 import (
 	"fmt"
 	"math"
-	"time"
 
 	"guis/internal/geom"
 )
@@ -80,35 +79,31 @@ func VideoPlayer(key string, p *Player) *Node {
 		if p.Locked {
 			return
 		}
+		now := AnimTime()
+		if now-videoClickAt[key] <= 0.32 {
+			// 双击画面：撤销单击的播放切换，只切全屏
+			videoClickAt[key] = 0
+			p.TogglePlay()
+			p.ToggleFullscreen()
+			return
+		}
+		videoClickAt[key] = now
+		if videoCoverShown(p) {
+			// 有封面时点画面 = 直接开始播放
+			p.Play()
+			return
+		}
 		p.TogglePlay()
 	}
 	surface.OnKey = func(code uint32) {
-		// 锁定后除 ESC 外的快捷键失效
-		if p.Locked && code != 0x1B {
-			return
-		}
-		switch code {
-		case 0x20: // Space
-			p.TogglePlay()
-		case 0x25: // ←
-			p.SeekBy(-5 * time.Second)
-		case 0x27: // →
-			p.SeekBy(5 * time.Second)
-		case 0x26: // ↑
-			p.SetVolume(p.Volume + 0.1)
-		case 0x28: // ↓
-			p.SetVolume(p.Volume - 0.1)
-		case 0x24: // Home
-			p.SetPos(0)
-		case 0x23: // End
-			p.SetPos(p.Duration())
-		case 0x1B: // Esc：退出播放器全屏
-			if p.Fullscreen {
-				p.Fullscreen = false
-				RequestRedraw()
-			}
-		}
+		videoHandleKey(key, p, code)
 	}
+	surface.OnScroll = func(dy float32) {
+		// 滚轮调音量（无滚动容器拦截时 App 会把滚轮派发到命中的节点）
+		videoWheelVolume(key, p, -dy)
+	}
+
+
 
 	children := []*Node{surface}
 
@@ -119,8 +114,8 @@ func VideoPlayer(key string, p *Player) *Node {
 			TAlign(AlignCenter).WrapOn()))
 	}
 
-	// ---- 暂停时的中央播放按钮（锁定时不显示，避免误触）----
-	if !p.Playing && !p.HideControls && !p.Locked {
+	// ---- 暂停时的中央播放按钮（锁定时不显示，避免误触；有封面时由封面按钮承担）----
+	if !p.Playing && !p.HideControls && !p.Locked && !videoCoverShown(p) {
 		children = append(children, videoCenterPlay(key, p))
 	}
 
@@ -136,7 +131,6 @@ func VideoPlayer(key string, p *Player) *Node {
 			children = append(children, videoControlLayer(key, p, op))
 		}
 	}
-
 	// ---- 音量浮层（挂在根层，避免 28px 图标格裁切）----
 	if at, ok := videoVolOpen[key]; ok && AnimTime()-at < 0.8 {
 		if pop := videoVolumePopup(key, p); pop != nil {
@@ -144,23 +138,40 @@ func VideoPlayer(key string, p *Player) *Node {
 		}
 	}
 
+	// ---- 封面 / 缓冲 / 播放结束（互斥，压在画面之上、控制层之下）----
+	if videoCoverShown(p) {
+		children = append(children, videoCoverLayer(key, p))
+	} else if videoBuffering(p) {
+		children = append(children, videoBufferingLayer(key))
+	} else if videoEndedShown(p) && !p.HideEndedOverlay {
+		children = append(children, videoEndedLayer(key, p))
+	}
+
 	// ---- 倍速面板 ----
 	if videoSpeedOpen[key] {
 		children = append(children, videoSpeedPanel(key, p))
 	}
 
+	// ---- 信息浮层（I 键切换）----
+	if p.ShowInfo {
+		children = append(children, videoInfoLayer(key, p))
+	}
+
 	st := St().Wp(100).H(360).R(10).Clipped().
 		BgC("#000000").Stroke(1, ColLine)
 	if p.Fullscreen {
-		// 全屏：铺满窗口根 Stack（去掉圆角与描边）
-		st = St().BgC("#000000")
-		st.PosAbs = true
-		st.HasL, st.AbsL = true, 0
-		st.HasT, st.AbsT = true, 0
-		st.HasR, st.AbsR = true, 0
-		st.HasB, st.AbsB = true, 0
+		// 全屏：绝对铺满窗口根层（st 的包含块由 portal 保证是整窗）
+		st = St().AbsFill().BgC("#000000")
 	}
-	return Stack(children...).St(st).K(key + "-root")
+	node := Stack(children...).St(st).K(key + "-root")
+	if p.Fullscreen {
+		// 挂到窗口根层（portal）渲染：嵌在固定高度 / Clipped 面板里的播放器
+		// 也能真正铺满整窗，不再受父容器包含块与裁剪区限制
+		Portal("video-fullscreen:"+key, node)
+		// 原位留一个空占位，父面板不会因为全屏而塌陷或露出黑底
+		return Box().K(key + "-fullscreen-hold")
+	}
+	return node
 }
 
 // videoSideTools 画面左侧中间的旋转 / 锁定竖排按钮（形状图标，不依赖字形）。
@@ -612,17 +623,7 @@ func videoFullBtn(key string, p *Player) *Node {
 	n := Stack(
 		Stack(icon).St(St().AbsCenter()),
 	).St(St().W(28).H(28).R(14).BgC(bg))
-	n.K(key + "-full").Tap(func() {
-		// 播放器铺满窗口 + 系统窗口真全屏（覆盖当前显示器）
-		p.Fullscreen = !p.Fullscreen
-		if cur := currentApp.Load(); cur != nil {
-			cur.SetFullscreen(p.Fullscreen)
-		}
-		if p.OnFullscreen != nil {
-			p.OnFullscreen()
-		}
-		RequestRedraw()
-	})
+	n.K(key + "-full").Tap(func() { p.ToggleFullscreen() })
 	return n
 }
 

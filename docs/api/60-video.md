@@ -132,3 +132,57 @@ p := ui.NewPlayerOf(mySource)
 * 同一界面多个播放器的 `key` 必须唯一。
 * 浏览器端 `.m3u8` 需要 `hls.js`（仓库 `web/hls.min.js` 已带）。
 * 播放器默认懒创建；未打开过视频时写 `Fullscreen` 前要判空（gallery 曾因此全屏黑屏）。
+
+## 9. 封面（Cover）
+
+```go
+p := ui.NewMediaPlayerWith(path, cfg)
+p.Cover = "D:/covers/xxx.jpg"   // 也可 p.SetCover(path)
+p.CoverTitle = "剧名"            // 封面左下角标题（可选）
+p.CoverSub   = "第 1 集"         // 封面左下角副标题（可选）
+```
+
+- 只在「停在起点且未播放」时显示（`p.CoverVisible()`），开播后自动隐藏；
+- 封面铺满画面 + 暗色渐变 + 中央金色播放按钮，点击封面直接 `Play()`；
+- 结束时想显示封面的项目，把 `p.SetPos(0)` 后保持暂停即可。
+
+## 10. 高级交互（新增）
+
+| 能力 | 说明 |
+| --- | --- |
+| 封面 | `Cover / CoverTitle / CoverSub`、`SetCover`、`CoverVisible` |
+| 结束遮罩 | 播完显示「播放结束 + 重播（+上/下一集）」，`HideEndedOverlay` 可关 |
+| 缓冲指示 | `Source` 在播但还没拿到首帧时中央转圈（`Player.frame == nil`） |
+| 信息浮层 | `ShowInfo = true`（或按 `I`）显示分辨率 / 时间 / 倍速 / 旋转 |
+| 双击画面 | 切全屏（并撤销单击带来的播放切换） |
+| 滚轮 | 画面区滚轮调音量，一格约 10%，并弹出音量浮层 |
+| 全屏 API | `p.ToggleFullscreen()` / `p.SetFullscreen(v)` |
+
+键盘（画面获得焦点时）：
+
+```
+空格  播放/暂停          ← / →   -5s / +5s
+J / L -10s / +10s        Home / End  回到开头 / 跳到结尾
+0~9   跳到 0%~90%         ↑ / ↓  音量 ±10%
+M     静音               F      全屏            I   信息浮层
+[ ]   倍速 -/+ 0.25      Esc    退出全屏
+锁定（Locked）后除 Esc 外全部失效。
+```
+
+## 11. 全屏实现说明（重要）
+
+播放器的绝对定位以**最近的父容器**为包含块，并且会被祖先的 `Clipped()` / 滚动容器裁剪。
+所以早年「放在根 Stack 里才能铺满整窗」的限制，在嵌进固定高度面板（例如影视剧场的
+400px 播放面板）时就会失效——全屏只铺满那块面板。
+
+现在全屏走框架的**窗口根层浮层**（`ui.Portal`）：
+
+```go
+ui.Portal(key, node)   // 构建期把节点挂到窗口根层，脱离父容器布局与裁剪
+```
+
+- `Player.Fullscreen` 为真时，`VideoPlayer` 自动把播放器登记到 `video-fullscreen:<key>`，
+  原位只留一个空占位（面板不会塌陷），画面因此铺满整窗；
+- 登记只在当前帧有效：`App` 每帧在 `view()` 之前清空，组件构建时登记即可；
+- 业务也可以直接用它做全屏图片预览、自定义模态层等其他窗口级浮层；
+- 窗口若退出全屏（用户按 ESC），播放器会自动同步退出（`windowFullscreenState`）。

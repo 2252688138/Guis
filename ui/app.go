@@ -68,9 +68,18 @@ type App struct {
 	mouseX, mouseY float32
 	mouseIn        bool
 
+	// tipText / tipX / tipY 本窗口的悬停提示。提示必须按窗口存：
+	// 主窗口与数字人独立窗口同时存在时，全局一份会把提示画到别的窗口上。
+	tipText    string
+	tipX, tipY float32
+
 	pressX, pressY float32
 	pressed        bool
 	clickPending   bool
+	// chartLegendHits 图例项命中区（按图表 Key 保存，绘制时写、点击时读）。
+	chartLegendHits map[string][]chartLegendHit
+	// curChartKey 当前正在绘制的图表 Key（paintChart 设置，供图例记录命中区）。
+	curChartKey string
 	clickX, clickY float32
 
 	// 右键按下：下一帧（树指针有效时）分发给 OnRightClickAt。
@@ -84,6 +93,14 @@ type App struct {
 
 	hoverNode *Node
 	pressNode *Node
+	// devRoot 本帧未包装 DevTools 的原始视图（采集节点树用；面板关闭时为 nil）
+	devRoot *Node
+	// 一次性截图：captureReq 置位后，下一帧在 Swap 之前把像素读回
+	//（交换后后缓冲内容未定义，必须抢在 Swap 之前读）。
+	captureReq         bool
+	capturePix         []byte
+	captureW, captureH int
+	captureErr         error
 	// pressSent 本次按下是否已分发过 OnPress。
 	//
 	// 不能用「节点指针」判断：节点树每帧重建，指针帧帧不同，会导致
@@ -210,6 +227,10 @@ type App struct {
 	// quitting 跳过关闭拦截（App.Quit 真正退出时置位）
 	quitting bool
 	pending  []func()
+	// pendingKey 同 key 投递合并：key → pending 下标（见 App.PostKey）。
+	pendingKey map[string]int
+	// pendingWarned 上次积压告警时的队列长度（每翻一倍再报一次，避免刷屏）。
+	pendingWarned int
 	// disposed 保证 GL/字体资源只释放一次
 	disposed bool
 	// minimized 上一帧是否处于最小化（恢复时强制重绘，并重建媒体解码窗口）
@@ -353,7 +374,9 @@ func newApp(opts Options, view func() *Node) (*App, error) {
 	// 热重载重启：恢复上一进程的窗口位置 / 尺寸 / 最大化与业务状态。
 	// 必须在首帧之前完成，否则窗口会先按默认位置闪一下。
 	hotApplyRestore(a)
-	if opts.Hidden {
+	// 预热交接：新进程先建窗口、画好首帧但不显示（等守护进程下达 show），
+	// 这样旧窗口可以在新窗口就绪之后才关闭，视觉上不出现「窗口消失」的空档。
+	if opts.Hidden || hotHoldVisible() {
 		win.SetVisible(false)
 	}
 	return a, nil
@@ -409,6 +432,18 @@ func runLoop() error {
 			}
 			continue
 		}
+		// 预热交接：新窗口首帧已画好，守护进程下达 show → 在 UI 线程亮出新窗口，
+		// 随后守护进程才会关掉旧窗口，所以屏幕上不会出现空档。
+		if hotShowRequested() {
+			hotPrewarmShown()
+			for _, a := range list {
+				if a == nil || a.closed || a.win == nil {
+					continue
+				}
+				a.Show()
+				hotAfterReveal(a)
+			}
+		}
 		// 上一帧存在动画时本帧继续重绘所有窗口
 		needAnim := animBusy.Swap(false)
 		painted := false
@@ -445,13 +480,15 @@ func runLoop() error {
 			}
 			// 窗口最小化、或被收进托盘（隐藏）时跳过渲染：不可见的帧不消耗 GPU/CPU。
 			// 首帧呈现前（revealed 为假）不能跳过，否则 Options.Hidden 的窗口永远等不到首帧。
-			if a.win != nil && (a.win.IsMinimized() || (a.revealed && a.windowHidden())) {
+			// 预热交接中的隐藏窗口也不能跳过：它马上要显示，跳过会把字体/纹理缓存释放掉，
+			// 交接那一刻反而卡一下。
+			if a.win != nil && !hotHoldVisible() && (a.win.IsMinimized() || (a.revealed && a.windowHidden())) {
 				a.minimized = true
 				a.dirty = false
 				a.redrawRequest.Store(false)
 				// 最小化期间先把可重建的显存与物理页都让出来
 				if !a.trimmed {
-					a.trimCaches(true)
+					a.trimCaches(true, false)
 					a.trimmed, a.trimmedDeep = true, true
 				}
 				// 不渲染，但排队的 UI 回调必须照常执行：自动化任务、下载完成、
@@ -500,11 +537,15 @@ func runLoop() error {
 			//      用户正看着窗口时不做，避免重新调页的顿挫。
 			idle := time.Since(a.lastPaint)
 			if !a.trimmed && idle >= idleTrimAfter {
-				a.trimCaches(false)
+				// 窗口还亮着（前台且未最小化）时不能做「重建类」回收：
+				// 离屏目标 / 组件层一旦释放，下一次被别处重绘唤醒的那帧就要重建，
+				// 表现为静止窗口每隔几秒整窗闪一下（数字人窗口、独立设置窗口都中招）。
+				visible := a.win != nil && !a.win.IsMinimized() && windowInForeground(a.HWND())
+				a.trimCaches(false, visible)
 				a.trimmed = true
 			}
 			if !a.trimmedDeep && idle >= idleTrimDeepAfter && (a.win == nil || a.win.IsMinimized() || !windowInForeground(a.HWND())) {
-				a.trimCaches(true)
+				a.trimCaches(true, false)
 				a.trimmedDeep = true
 			}
 			a.runPending()
@@ -602,8 +643,16 @@ func (a *App) handleEvent(ev Event) {
 		a.pressed, a.pressSent = false, false
 		a.dirty = true
 	case EvMouseMove:
+		prevMouseX := a.mouseX
 		a.mouseX, a.mouseY = ev.X/uiScale, ev.Y/uiScale
 		a.mouseIn = true
+		// 交互图表：按住拖动 = 平移可视窗口
+		if a.pressed {
+			if cn := chartInteractiveNode(a, a.mouseX, a.mouseY); cn != nil {
+				chartPanBy(cn, a.mouseX-prevMouseX)
+				a.dirty = true
+			}
+		}
 		// 先用「上一帧的树」判一次命中：鼠标划过空白区域或同一张卡片时，
 		// 悬停目标没有变化，外观也不会变——此时绝不能重绘。
 		//
@@ -624,6 +673,9 @@ func (a *App) handleEvent(ev Event) {
 	case EvMouseLeave:
 		a.mouseIn = false
 		a.dirty = true
+		// 鼠标离开本窗口就清掉本窗口的提示：否则移到另一个窗口后，
+		// 这条提示还会僵在原窗口上（多窗口时最明显）。
+		a.tipText = ""
 	case EvMouseDown:
 		a.mouseX, a.mouseY = ev.X/uiScale, ev.Y/uiScale
 		// 手指/鼠标重新按下：惯性滑行应当立即停住（否则内容会从指针底下滑走）
@@ -691,6 +743,18 @@ func (a *App) handleEvent(ev Event) {
 		}
 		// 应用内快捷键（带修饰键或功能键）：优先于焦点控件，Ctrl+S 这类不会先被输入框吞掉
 		if (a.ctrlDown || a.altDown || ev.Key >= 0x70 && ev.Key <= 0x7B) && DispatchShortcuts(ev.Key) {
+			a.dirty = true
+			return
+		}
+		// 内置 DevTools：F12 切换（放在焦点控件与已注册快捷键之后，
+		// 所以编辑器里的 F12「转到定义」等仍然优先）；Esc 关闭。
+		if ev.Key == 0x7B && !a.ctrlDown && !a.altDown && !a.shiftDown {
+			ToggleDevTools()
+			a.dirty = true
+			return
+		}
+		if ev.Key == 0x1B && DevToolsOn() {
+			SetDevTools(false)
 			a.dirty = true
 			return
 		}
@@ -793,15 +857,48 @@ func (a *App) handleEvent(ev Event) {
 	}
 }
 
-// runPending 执行在 UI 线程排队的回调（跨线程打开窗口等）。
+// 事件投递队列的门限（ui.Post / ui.PostKey）。
+// 这里用变量而不是常量：测试需要把门限调小来验证分批与丢弃行为。
+var (
+	// pendingPerFrame 单帧最多执行多少个投递任务。一次执行上千个闭包会直接
+	// 拉长本帧（表现为卡顿甚至掉帧），剩下的留到下一帧继续。
+	pendingPerFrame = 2048
+	// pendingSoftLimit 超过此长度开始往 stderr 告警（每翻一倍再报一次）。
+	pendingSoftLimit = 4096
+	// pendingHardLimit 硬上限：超过就丢弃新任务，避免后台协程跑飞时队列无界增长。
+	pendingHardLimit = 65536
+)
+
 func (a *App) runPending() {
 	appsMu.Lock()
 	if len(a.pending) == 0 {
+		a.pendingKey = nil
 		appsMu.Unlock()
 		return
 	}
-	list := a.pending
-	a.pending = nil
+	batch := len(a.pending)
+	if batch > pendingPerFrame {
+		batch = pendingPerFrame
+	}
+	list := make([]func(), batch)
+	copy(list, a.pending[:batch])
+	// 前移剩余任务并同步 key 下标（PostKey 用下标定位，平移后必须跟着改）
+	remain := len(a.pending) - batch
+	if remain > 0 {
+		copy(a.pending, a.pending[batch:])
+	}
+	a.pending = a.pending[:remain]
+	for k, idx := range a.pendingKey {
+		if idx < batch {
+			delete(a.pendingKey, k)
+			continue
+		}
+		a.pendingKey[k] = idx - batch
+	}
+	if remain > 0 {
+		// 还有积压：执行完继续请求重绘，下一帧接着跑
+		a.redrawRequest.Store(true)
+	}
 	appsMu.Unlock()
 	for _, fn := range list {
 		fn()
@@ -831,14 +928,28 @@ func (a *App) frame(forced bool) {
 	a.r.Resize(pw, ph, es)
 	w, h := float32(pw)/es, float32(ph)/es
 	a.winW, a.winH = w, h
+	// 先把全局视口切到本窗口：紧随其后的 view() 读的就是自己的尺寸
+	enterViewport(w, h)
 
 	// composeFBO 在真正开始绘制前才赋值（见下），提前声明以便「无树」分支安全返回
 	var composeFBO uint32
+	// 窗口级浮层（全屏播放器等）每帧重新登记：view() 之前清空
+	portalReset()
 	root := a.view()
 	if root == nil {
 		return
 	}
+	// 把本帧登记的浮层挂到根层：包含块为整窗，且不受祖先裁剪与布局约束
+	root = portalWrap(root)
 	a.root = root
+	// 内置 DevTools 面板同样挂在根 Stack 最上层（与 Portal 浮层同机制）：
+	// 关闭时只多一次 atomic.Load，采集 / 布局 / 绘制全部跳过。
+	devOn := devOnFlag.Load()
+	a.devRoot = nil
+	if devOn {
+		a.devRoot = root
+		root = devtoolsWrap(root, w, h)
+	}
 
 	// 滚动条淡出计时（悬停/滚动时会在 updateScrollbar 中归零）
 	if a.scrollIdle < 1.5 {
@@ -846,6 +957,10 @@ func (a *App) frame(forced bool) {
 	}
 	Layout(root, w, h, a.fonts)
 	root.Frame = geom.Rect{X: 0, Y: 0, W: w, H: h}
+	// DevTools 采集：Layout 之后 Frame 才有效，这里抓本帧的节点树与规模指标
+	if devOn && a.devRoot != nil {
+		devtoolsSample(a, a.devRoot, w, h, msSince(frameT0))
+	}
 	// 布局完成才能知道尺寸：此处一次后序+前序遍历，标记本帧的「纯静态子树」与
 	// 「缓存根」（未开启自动缓存时直接返回，零开销）。
 	a.startLayerFrame(root)
@@ -914,6 +1029,11 @@ func (a *App) frame(forced bool) {
 	if a.dragKey != "" {
 		if n := findKey(root, a.dragKey); n != nil && n.OnDrag != nil {
 			ax, ay := a.visualOrigin(n, 0, 0)
+			// 图表交互：点图例 = 切换该系列显隐
+			if n.Kind == KChart && n.Chart != nil && n.Chart.Interactive &&
+				a.chartLegendClick(n, a.clickX, a.clickY) {
+				a.dirty = true
+			}
 			n.OnDrag(a.mouseX-ax, a.mouseY-ay)
 			a.dirty = true
 		}
@@ -930,6 +1050,11 @@ func (a *App) frame(forced bool) {
 		n := hitInteractive(root, a.rightX, a.rightY, 0, a)
 		if n != nil && n.OnRightClickAt != nil {
 			ax, ay := a.visualOrigin(n, 0, 0)
+			// 图表交互：点图例 = 切换该系列显隐
+			if n.Kind == KChart && n.Chart != nil && n.Chart.Interactive &&
+				a.chartLegendClick(n, a.clickX, a.clickY) {
+				a.dirty = true
+			}
 			n.OnRightClickAt(a.rightX-ax, a.rightY-ay)
 			a.dirty = true
 		}
@@ -946,6 +1071,11 @@ func (a *App) frame(forced bool) {
 			}
 			focusVisible = false
 			ax, ay := a.visualOrigin(n, 0, 0)
+			// 图表交互：点图例 = 切换该系列显隐
+			if n.Kind == KChart && n.Chart != nil && n.Chart.Interactive &&
+				a.chartLegendClick(n, a.clickX, a.clickY) {
+				a.dirty = true
+			}
 			// 富文本：先分发行内片段点击（链接）
 			if n.Kind == KRichText && n.OnSpanClick != nil {
 				if sp, ok := richAt(n, a.clickX-ax-n.Style.Pad.Left-n.Style.DrawX, a.clickY-ay-n.Style.Pad.Top-n.Style.DrawY); ok {
@@ -1019,13 +1149,31 @@ func (a *App) frame(forced bool) {
 	clear(a.wvRects)
 	// 记录本帧起始的图表图号：空闲回收据此判断哪些图表纹理上一帧没画到
 	a.chartFrameBase = a.chartStamp
+	var devPaintT0 time.Time
+	if devOn {
+		devPaintT0 = time.Now()
+	}
 	a.paint(root, 0)
+	if devOn {
+		devtoolsEnd(msSince(devPaintT0))
+	}
 	// 本帧内容已全部进批次：此时把带 CacheLayer 的子树区域快照进缓存
 	//（必须排在 End 之前，End 会提交并清空批次，之后就拷不到本帧像素了）。
 	a.captureLayers()
 	a.r.End()
 	// 超高清：把超采样离屏结果降采样写回呈现目标（未开启时为空操作）
 	a.r.Resolve()
+	// 一次性截图请求：必须在 Swap 之前读回像素（交换后后缓冲内容未定义）
+	if a.captureReq {
+		pix, cw, ch := a.r.ReadPixels()
+		if cw > 0 && ch > 0 && len(pix) >= cw*ch*4 {
+			a.capturePix, a.captureW, a.captureH = pix, cw, ch
+			a.captureErr = nil
+		} else {
+			a.capturePix, a.captureErr = nil, errNoFramebuffer
+		}
+		a.captureReq = false
+	}
 	// 网页是独立的子窗口：布局确定后立即同步位置/显隐（紧贴 Swap，避免拖影）
 	a.syncWebViews()
 	if composeFBO != 0 {
@@ -1037,7 +1185,8 @@ func (a *App) frame(forced bool) {
 	// 否则会先亮一下窗口类背景色（就是启动瞬间的白屏/闪一下）。
 	if !a.revealed {
 		a.revealed = true
-		if !a.opts.Hidden {
+		// 预热交接时先不显示：等守护进程把旧窗口关掉的同一时刻再 show。
+		if !a.opts.Hidden && !hotHoldVisible() {
 			a.win.SetVisible(true)
 		}
 		// 热重载恢复现场时记下的「最大化」在这里才生效（避免窗口提前亮出来）。
@@ -1100,7 +1249,7 @@ func (a *App) paint(n *Node, sy float32) {
 	if n == nil || n.Style.Opacity <= 0 {
 		return
 	}
-	st := &n.Style
+	st := fadedStyle(&n.Style)
 	if st.Animated {
 		a.animating = true
 		if !st.AnimSlow {
@@ -1160,6 +1309,32 @@ func (a *App) paint(n *Node, sy float32) {
 			a.layerRej++
 		}
 	}
+	// 组件动画：绑定了动画的节点在绘制自己与整棵子树之前压入一层顶点变换，
+	// 于是位移 / 缩放 / 旋转 / 透明度会一起作用到文字、图标、图片与底板（见 gpu.PushAnim）。
+	animPushed := false
+	if len(n.anim) > 0 {
+		f := animTransformOf(n, AnimTime())
+		if f.Active {
+			a.animating = true
+			a.animFast = true
+		}
+		// 完全透明：整棵子树不必生成顶点
+		if f.Alpha <= 0.002 {
+			return
+		}
+		if f.DX != 0 || f.DY != 0 || f.SX != 1 || f.SY != 1 || f.Rot != 0 || f.Alpha < 1 {
+			a.r.PushAnim(gpu.AnimTransform{
+				PivotX: r.X + r.W*(0.5+f.PivotFX),
+				PivotY: r.Y + r.H*(0.5+f.PivotFY),
+				ScaleX: f.SX, ScaleY: f.SY,
+				Rotate: f.Rot,
+				DX:     f.DX, DY: f.DY,
+				Alpha: f.Alpha,
+			})
+			animPushed = true
+		}
+	}
+
 	if clipped {
 		a.pushClip(r)
 	}
@@ -1244,6 +1419,10 @@ func (a *App) paint(n *Node, sy float32) {
 
 	if clipped {
 		a.popClip()
+	}
+	// 子树画完，撤掉本节点的动画变换（与上面的 PushAnim 成对）
+	if animPushed {
+		a.r.PopAnim()
 	}
 	if openedLayer {
 		a.layerOpen = false
@@ -1774,6 +1953,12 @@ func (a *App) handleWheelAt(x, y, dy float32, instant bool) {
 	if a.root == nil || dy == 0 {
 		return
 	}
+	// 交互图表（ui.Chart 的 Interactive）吃滚轮：以窗口中心为锚点缩放可视区间
+	if cn := chartInteractiveNode(a, x, y); cn != nil {
+		chartZoomStep(cn, dy, 1)
+		a.dirty = true
+		return
+	}
 	// 新的滚动输入立刻接管：惯性滑行中再滚一次不该和旧速度叠加
 	a.stopFling()
 	// dy 为轮转向（上正下负）：向下滚时偏移量增加
@@ -2242,6 +2427,28 @@ func MousePos() (float32, float32) {
 	return 0, 0
 }
 
+// PressPos 返回最近一次鼠标按下点（逻辑像素，窗口坐标）。
+//
+// 给「按下定位光标」类回调使用：按下回调在渲染帧里执行，此时 a.mouseX
+// 可能已被随后到达的 mousemove 覆盖，读实时鼠标位置会把光标挪到指针现在指的地方。
+func PressPos() (float32, float32) {
+	if a := currentApp.Load(); a != nil {
+		return a.pressX, a.pressY
+	}
+	return 0, 0
+}
+
+// ClickPos 返回最近一次单击（按下后在控件上抬起）的位置（逻辑像素，窗口坐标）。
+//
+// 点击回调是在抬起之后的渲染帧里分发的，这期间鼠标多半已经移开，
+// 所以定位必须用抬起点，不能用 MousePos()。
+func ClickPos() (float32, float32) {
+	if a := currentApp.Load(); a != nil {
+		return a.clickX, a.clickY
+	}
+	return 0, 0
+}
+
 // ScrollOffset 返回指定滚动容器当前的纵向偏移（虚拟列表据此计算可见区间）。
 func ScrollOffset(key string) float32 {
 	if a := currentApp.Load(); a != nil {
@@ -2285,19 +2492,21 @@ func MouseDown() bool {
 	return false
 }
 
-// 悬停提示（TooltipLayer 读取）
-var (
-	tooltipText        string
-	tooltipX, tooltipY float32
-)
-
-// SetTooltip 设置悬停提示文本与位置（空串清除），一般传 MousePos()。
+// SetTooltip 设置「当前窗口」的悬停提示文本与位置（空串清除），一般传 MousePos()。
+//
+// 提示归属触发它的那个窗口（currentApp：事件分发与 frame() 都已切到本窗口）：
+// 主窗口与数字人独立窗口并存时，各自只画自己的提示，不会串到对方窗口上。
 func SetTooltip(text string, x, y float32) {
-	if text == "" && tooltipText == "" {
+	a := currentApp.Load()
+	if a == nil {
 		return
 	}
-	tooltipText, tooltipX, tooltipY = text, x, y
-	RequestRedraw()
+	if text == "" && a.tipText == "" {
+		return
+	}
+	a.tipText, a.tipX, a.tipY = text, x, y
+	// 只重绘本窗口：全局 RequestRedraw 会让所有窗口白绘一帧
+	a.Invalidate()
 }
 
 // TextWidth 测量单行文本宽度（逻辑像素，UI 线程调用）。
@@ -2608,6 +2817,37 @@ func (a *App) Restore() { a.win.Restore(); a.dirty = true }
 // SetTitle 修改窗口标题。
 func (a *App) SetTitle(s string) { a.win.SetTitle(s) }
 
+// Bounds 返回窗口在屏幕上的位置与尺寸（物理像素），ok = false 表示当前后端
+// 不支持查询窗口几何（X11 / macOS / wasm 等，见 hotBoundsBackend）。
+//
+// 典型用法：记住独立子窗口上次的位置与尺寸，下次在原地打开。
+func (a *App) Bounds() (x, y, w, h int, ok bool) {
+	if a == nil || a.win == nil {
+		return 0, 0, 0, 0, false
+	}
+	b, supported := a.win.(hotBoundsBackend)
+	if !supported {
+		return 0, 0, 0, 0, false
+	}
+	x, y, w, h, _ = b.Bounds()
+	if w <= 0 || h <= 0 {
+		return 0, 0, 0, 0, false
+	}
+	return x, y, w, h, true
+}
+
+// SetBounds 把窗口移到指定位置并按指定尺寸缩放（物理像素）。
+// 窗口首帧之前调用不会让它提前显示，所以「建窗后立刻定位」不会闪一下。
+// 后端不支持时静默忽略。
+func (a *App) SetBounds(x, y, w, h int) {
+	if a == nil || a.win == nil {
+		return
+	}
+	if b, ok := a.win.(hotBoundsBackend); ok {
+		b.SetBounds(x, y, w, h)
+	}
+}
+
 // Close 关闭窗口（会经过 SetOnClose 拦截，例如收进托盘）。
 func (a *App) Close() { a.win.Close() }
 
@@ -2620,15 +2860,71 @@ func (a *App) Quit() {
 	a.win.Close()
 }
 
-// Post 在 UI 线程执行回调（可从任意 goroutine 调用）。
+// Post 把 fn 投递到 UI 线程执行（可从任意协程调用）。
+//
+// 队列有硬上限：投递方跑飞时不会把内存吃光，超过上限的任务被丢弃并告警
+// （UI 状态刷新类任务丢一两个不影响正确性，下个周期会重投）。
 func (a *App) Post(fn func()) {
 	if fn == nil {
 		return
 	}
 	appsMu.Lock()
+	n := len(a.pending)
+	if n >= pendingHardLimit {
+		appsMu.Unlock()
+		a.warnPendingOverflow(n)
+		return
+	}
+	if n >= pendingSoftLimit && n >= a.pendingWarned*2 {
+		a.pendingWarned = n
+		fmt.Fprintf(os.Stderr, "[ui] Post 积压 %d 个任务（硬上限 %d）：可能有人在后台高频投递\n", n, pendingHardLimit)
+	}
 	a.pending = append(a.pending, fn)
 	appsMu.Unlock()
 	a.redrawRequest.Store(true)
+}
+
+// PostKey 带 key 的投递：同一 key 尚未执行时只保留最后一次闭包（覆盖旧的）。
+//
+// 典型用途：后台连续产生「刷新某个区域」的请求时，中间态没有意义，合并后只跑一次，
+// 也避免同一 key 的任务在队列里滘雪球。
+func (a *App) PostKey(key string, fn func()) {
+	if key == "" || fn == nil {
+		return
+	}
+	appsMu.Lock()
+	if idx, ok := a.pendingKey[key]; ok && idx < len(a.pending) {
+		a.pending[idx] = fn
+		appsMu.Unlock()
+		a.redrawRequest.Store(true)
+		return
+	}
+	if len(a.pending) >= pendingHardLimit {
+		n := len(a.pending)
+		appsMu.Unlock()
+		a.warnPendingOverflow(n)
+		return
+	}
+	if a.pendingKey == nil {
+		a.pendingKey = make(map[string]int, 8)
+	}
+	a.pendingKey[key] = len(a.pending)
+	a.pending = append(a.pending, fn)
+	appsMu.Unlock()
+	a.redrawRequest.Store(true)
+}
+
+// warnPendingOverflow 投递队列溢出告警（限流：每翻一倍报一次，避免刷屏）。
+func (a *App) warnPendingOverflow(n int) {
+	appsMu.Lock()
+	report := n >= a.pendingWarned*2
+	if report {
+		a.pendingWarned = n
+	}
+	appsMu.Unlock()
+	if report {
+		fmt.Fprintf(os.Stderr, "[ui] Post 队列已满（%d 个任务，硬上限 %d），本次投递被丢弃\n", n, pendingHardLimit)
+	}
 }
 
 // idleTrimAfter 空闲多久后释放可重建的 GPU 缓存（第一级，观感无损）。
@@ -2638,6 +2934,9 @@ const idleTrimAfter = 3 * time.Second
 const idleTrimDeepAfter = 30 * time.Second
 
 // trimCaches 释放可重建的显存占用（离屏目标 / 组件缓存 / 图片纹理）。
+//
+// keepFrame=true 表示窗口仍在前台可见：此时保留「当前帧用得到的」离屏目标与
+// 组件层（释放后下一帧要重建，会整窗闪一下），只回收真正闲置的纹理与字体。
 //
 // deep=false 为浅空闲：窗口大概率还在屏幕上，只能回收「上一帧没画到」的资源。
 // 可见图片（皮肤壁纸 / 头像 / 缩略图）与可见图表的纹理必须留着：
@@ -2649,7 +2948,7 @@ const idleTrimDeepAfter = 30 * time.Second
 //
 // 只回收「下一帧会自动重建」的资源：字体图集重建代价是整页重新光栅化字形，
 // 窗口帧缓冲又属于系统合成链路，都不适合在这里动。
-func (a *App) trimCaches(deep bool) {
+func (a *App) trimCaches(deep, keepFrame bool) {
 	if a == nil || a.r == nil || a.win == nil {
 		return
 	}
@@ -2670,8 +2969,10 @@ func (a *App) trimCaches(deep bool) {
 		}
 	}
 	// 组件缓存也一并放掉：空闲时它没有任何价值，下一帧按需重新快照
-	a.layerReleaseAll()
-	a.r.ReleaseOffscreen()
+	if !keepFrame {
+		a.layerReleaseAll()
+		a.r.ReleaseOffscreen()
+	}
 	// 字体图集是常驻内存的大头（Go 堆与显存各一份）：闲置 3 秒后收到的
 	// 字体确实没人要了，此时就按年龄淘汰到 idleKeepFonts。
 	// 旧实现只在深度空闲才收，而且 trimTo 的“本帧在用”保护会让它几乎没效果。

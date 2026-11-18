@@ -61,6 +61,7 @@ ui.CapLast                      // 最后一个能力值（遍历 / 测试用）
 | `CapShellLink` 快捷方式 | ✅ IShellLink | ✅ .desktop | ✅ .webloc | ✗ | ✗ |
 
 > 「占位」= 接口存在且可调用，但不产生真实效果（WebView 返回不支持）。
+> WebView 的占位端仍是可用的降级后端：实例照常返回（`Err()` 说明原因），`wv.OpenExternal()` 交给系统浏览器打开。
 > ※ macOS 的 `CGEventTap` 需要「输入监控」授权（未授权时注册返回 0）；
 > ※ X11 的托盘需要桌面提供 XEmbed 宿主（`_NET_SYSTEM_TRAY_Sn` 有主），
 >   Sway 这类纯 wlroots 桌面只有 StatusNotifierItem，`NewTray` 会返回错误。

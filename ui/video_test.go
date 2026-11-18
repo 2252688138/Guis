@@ -309,22 +309,34 @@ func TestVideoVolPanelPos(t *testing.T) {
 		t.Fatalf("popup bottom = %.1f, want %.1f", y+112, icon.Y-root.Y-6)
 	}
 }
-
-// TestVideoPlayerFullscreen 全屏时播放器铺满满窗口（不改系统窗口）。
+// TestVideoPlayerFullscreen 全屏时播放器挂到窗口根层（portal），铺满整窗：
+// 即使嵌在固定高度、Clipped 的面板里，也不会只铺满那一小块面板。
 func TestVideoPlayerFullscreen(t *testing.T) {
 	p := NewPlayer(NewVideoClip([]VideoFrame{
 		testFrame(16, 9, 10, 20, 30, 255, 40*time.Millisecond),
 	}, 24, true))
 	p.Fullscreen = true
-	root := Stack(VideoPlayer("fs", p)).St(St().Wp(100).Hp(100))
+
+	portalReset()
+	defer portalReset()
+	// 内层：400px 高、Clipped 的面板（模拟影视剧场里的播放器容器）
+	panel := Box(VideoPlayer("fs", p)).St(St().Wp(100).H(400).Clipped())
+	root := portalWrap(Stack(panel).St(St().Wp(100).Hp(100)))
 	Layout(root, 640, 480, newTestCache())
 
+	if ks := PortalKeys(); len(ks) != 1 || ks[0] != "video-fullscreen:fs" {
+		t.Fatalf("portal 登记 = %v, want [video-fullscreen:fs]", ks)
+	}
 	n := findKey(root, "fs-root")
 	if n == nil {
 		t.Fatal("未找到播放器根节点 fs-root")
 	}
-	if !near(n.Frame.W, root.Frame.W) || !near(n.Frame.H, root.Frame.H) {
-		t.Fatalf("全屏尺寸 = %.0fx%.0f, want %.0fx%.0f",
-			n.Frame.W, n.Frame.H, root.Frame.W, root.Frame.H)
+	// 铺满整窗（480 高），而不是被 400 高的面板限制
+	if !near(n.Frame.W, 640) || !near(n.Frame.H, 480) {
+		t.Fatalf("全屏尺寸 = %.0fx%.0f, want 640x480", n.Frame.W, n.Frame.H)
+	}
+	// 原位只留空占位，面板不会撑出一块黑底
+	if hold := findKey(root, "fs-fullscreen-hold"); hold == nil || hold.Frame.H > 1 {
+		t.Fatalf("全屏占位节点异常: %v", hold)
 	}
 }

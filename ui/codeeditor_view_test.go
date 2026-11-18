@@ -1,4 +1,4 @@
-package ui
+﻿package ui
 
 import (
 	"fmt"
@@ -47,7 +47,7 @@ func TestCodeEditorWrapMapping(t *testing.T) {
 		t.Fatalf("视觉行 3 应映射到 (0,3)，实际 (%d,%d)", line, seg)
 	}
 	// 第 4 段（视觉行 3）内 x=35 → 第 90+5=95 列
-	p := e.PosAt(35, codeTopPad+3*e.lineH()+2)
+	p := e.PosAt(35, e.topPad()+3*e.lineH()+2)
 	if p.Line != 0 || p.Col != 95 {
 		t.Fatalf("坐标换算错误：%+v", p)
 	}

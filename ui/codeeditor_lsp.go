@@ -32,6 +32,10 @@ const (
 	lspSemanticOn
 	// lspHoverDue 鼠标悬停去抖到期（seq 为本次悬停请求序号）。
 	lspHoverDue
+	// lspHoverTranslated 悬停译文回来（md=原文，text=译文）。
+	lspHoverTranslated
+	// lspDiagsTranslated 诊断译文回来（md=原文，text=译文）。
+	lspDiagsTranslated
 )
 
 // codeLSPLogMax 日志缓冲保留条数。
@@ -43,12 +47,12 @@ const codeSemanticRetries = 8
 
 // lspPending 一条待应用的后台结果。
 type lspPending struct {
-	kind    lspKind
-	items   []CodeCompletion
-	lines   []string
-	diags   []CodeDiagnostic
-	text    string
-	msg     string
+	kind  lspKind
+	items []CodeCompletion
+	lines []string
+	diags []CodeDiagnostic
+	text  string
+	msg   string
 	// md 悬停服务端返回的 Markdown（lspHover）。
 	md      string
 	rename  string
@@ -101,7 +105,11 @@ func (e *CodeEditorState) drainLSP() {
 			}
 			e.setHoverMarkdown(p.md)
 		case lspDiagnostics:
-			e.lspDiags = p.diags
+			e.lspDiags = e.translateDiags(p.diags)
+		case lspHoverTranslated:
+			e.applyHoverTranslated(p.md, p.text)
+		case lspDiagsTranslated:
+			e.applyDiagsTranslated(p.md, p.text)
 		case lspFormatted:
 			if p.text != "" {
 				e.applyLSPText(p.text, p.msg)
@@ -149,7 +157,7 @@ func (e *CodeEditorState) positionCompletion() {
 		return
 	}
 	x := e.gutterTotal() - e.ScrollX + e.xOfCol(e.Pos.Line, e.Pos.Col)
-	y := codeTopPad + float32(e.Pos.Line+1)*e.lineH() - e.ScrollY
+	y := e.topPad() + float32(e.Pos.Line+1)*e.lineH() - e.ScrollY
 	if x < 0 {
 		x = 0
 	}
@@ -360,7 +368,7 @@ func (e *CodeEditorState) requestHoverAt(line, col int, mx, my float32) {
 // positionHover 悬停面板定位到光标右下方（相对节点）。
 func (e *CodeEditorState) positionHover() {
 	x := e.gutterTotal() - e.ScrollX + e.xOfCol(e.Pos.Line, e.Pos.Col) + 16
-	y := codeTopPad + float32(e.Pos.Line+1)*e.lineH() - e.ScrollY + 6
+	y := e.topPad() + float32(e.Pos.Line+1)*e.lineH() - e.ScrollY + 6
 	e.placeHover(x, y)
 }
 

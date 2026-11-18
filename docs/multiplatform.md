@@ -56,7 +56,7 @@
 | 快捷方式 | ✅ IShellLink | ✅ .desktop | ✅ .webloc | ❌ | ❌ | ❌ |
 | 单实例 | ✅ 互斥体 | ✅ flock | ✅ flock | ❌ | ✅ | ✅ |
 | 多显示器 | ✅ | ✅ xrandr | ✅ displayplacer | ❌ | ⚠️ | ⚠️ |
-| 内嵌浏览器 | ✅ WebView2 | ❌ | ❌ | ⚠️ 本身即网页 | ⏳ | ⏳ |
+| 内嵌浏览器 | ✅ WebView2 / CDP | ✅ X11 嵌入 / CDP | ✅ CDP | ⚠️ 本身即网页 | ⏳ | ⏳ |
 | 视频 / 音频 | ✅ MF + ffmpeg | ✅ ffmpeg + paplay/aplay | ❌ 占位 | ⏳ | ⏳ | ⏳ |
 | 深色模式检测 | ✅ 注册表 | ✅ gsettings/defaults | ✅ | ✅ 主题值 | ⏳ | ⏳ |
 | 禁止休眠 | ✅ | ✅ systemd-inhibit / caffeinate | ✅ | ❌ | ❌ | ❌ |
@@ -70,6 +70,16 @@
 
 > 运行时可用 `ui.HasCap(ui.CapVideo)` / `ui.Capabilities()` 查询真实能力，
 > 详见下方「能力查询」与 `docs/api/94-platform-caps.md`（含降级建议）。
+
+### 内嵌浏览器（浏览器组件）
+
+| 端 | 后端 | 说明 |
+| --- | --- | --- |
+| Windows | WebView2 子窗口 | 需安装 WebView2 Runtime；圆角 / DPI / 位置同步完整 |
+| Web | `<iframe>` 叠加 | 始终可用；跨域页面无法读取标题 / 执行脚本 |
+| Linux / macOS / Android / iOS | 降级后端（stub） | 不出画面，维护状态 + `OpenExternal()` 打开系统浏览器 |
+
+四端共用同一份 `ui.WebView`（`ui/webview_core.go`），平台差异只存在于后端文件；`WebViewAvailable()` 判断强弱，`Platform()` 返回后端名。
 
 ## 国际化与多端语言
 

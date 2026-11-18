@@ -211,11 +211,9 @@ func iconsCase() *ui.Node {
 			).St(ui.St().GapOf(8)).AlignTo(ui.AlignCenter),
 
 			ui.Row(
-				ui.Row(
-					ui.IconColored("search", 16, ui.ColTextMuted),
-					ui.Box(ui.Input("icon-demo-search", "", "搜索项目 / 文件 / 成员", nil)).Grow(1),
-				).St(ui.St().GapOf(8).PadXY(10, 0).W(300).H(38).R(10).
-					BgC(ui.ColInput).Stroke(1, ui.ColStroke)).AlignTo(ui.AlignCenter),
+				// 搜索框：默认无边框（SearchInput 自带放大镜 + 清除按钮，底板由父容器给）
+				ui.Box(ui.SearchInputH("icon-demo-search", "", "搜索项目 / 文件 / 成员", 38, nil)).
+					St(ui.St().W(300).H(38).R(10).BgC(ui.ColInput)),
 				ui.Row(
 					ui.IconColored("mail", 16, ui.ColTextMuted),
 					ui.Text("tang@example.com").St(ui.St().Text(12.5, 500, ui.ColTextDim)),

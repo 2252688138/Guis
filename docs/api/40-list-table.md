@@ -102,6 +102,7 @@ ui.FileTree(nodes, ui.TreeOptions{
     Indent:   16,
     RowH:     30,
     OnPick:   func(n ui.TreeNode) { open(n.Key) },
+    OnOpen:   func(n ui.TreeNode) { openInEditor(n.Key) }, // 双击（400ms 内二次点击），当次不再触发 OnPick
     OnToggle: func(n ui.TreeNode, open bool) {},
 })
 ui.TreeSetAllOpen("files", nodes, true)   // 工具条：全部展开 / 收起

@@ -31,7 +31,7 @@ if err == nil {
 }
 ```
 
-非 Windows 端返回 `ErrNotSupported`（`CapScreenCapture` 为假）。
+非 Windows 端 `CaptureScreen` 返回错误，且 `HasCap(CapScreenCapture)` 为假。
 
 ## 3. 窗口置顶 / 焦点
 

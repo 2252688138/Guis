@@ -94,11 +94,15 @@ ui.VideoPlayer("vp", p)
 
 ---
 
-## 2.5 WebView 内嵌浏览器（系统 WebView2）
+## 2.5 WebView 内嵌浏览器（一套 API + 各端后端）
 
 | 文件 | 入口 |
 | --- | --- |
-| `ui/webview.go` | `NewWebView` / `NewWebViewIn` / `WebViewNode` / `Browser` / `WebViewBar` / `WebViewStatus` / `WebViewAvailable` |
+| `ui/webview_core.go` | 唯一一份 `WebView` / `WebViewOptions` / 公开方法 / 事件 / 历史 / 查找 / 注入 / 消息桥 / 节点构建器 |
+| `ui/webview_windows.go` | Windows 后端（WebView2 子窗口 + DPI 换算 + 圆角真裁剪） |
+| `ui/webview_wasm.go` | 浏览器后端（`<iframe>` 定位 / 跨域降级） |
+| `ui/webview_stub.go` | 降级后端（Linux / macOS / Android / iOS：外部浏览器打开） |
+| `ui/webview_panel.go` | 多端 UI 组合件：自适应工具条 / 查找栏 / 标签页 / `BrowserPanel` |
 | `internal/win32/webview2.go` | 纯 syscall/purego 的 COM 绑定（Environment / Controller / CoreWebView2） |
 | `internal/win32/webview2loader/` | `//go:embed` 的 WebView2Loader.dll（自动释放，无需外部文件） |
 
@@ -120,6 +124,8 @@ return ui.Column(
 )
 ```
 
+- 能力增强（四端同一签名，后端不支持时自动降级）：页面内查找 `Find/FindNext/FindPrev`、缩放 `ZoomIn/ZoomOut/ZoomReset`、静音 `SetMuted`、深色 `SetDarkMode`、注入 CSS `InjectCSS/ClearInjectedCSS`、JS↔Go 消息桥 `Post/PostJSON/OnMessage`、导航白名单 `SetAllowNavigation`、历史 `History/GoHistory`、外部浏览器 `OpenExternal`。
+- 多端：Windows = WebView2；浏览器 = `<iframe>`；Linux / macOS / 移动端 = 降级后端（`WebViewAvailable()` 为 false，`Err()` 说明原因，`OpenExternal()` 把链接交给系统浏览器）。
 - 组件按节点矩形同步浏览器子窗口的位置（`App.frame` 绘制时收集矩形 → `syncWebViews` 按 DPI 换算成物理像素），滚出视口 / 切页自动隐藏。
 - 工具栏与状态行是自绘控件；地址栏回车提交用 `ui.InputSubmit`。
 - 圆角/裁剪：`wv.SetRadius(12)` 对网页子窗口做 `SetWindowRgn` 区域裁剪（真裁掉，可随 DPI/尺寸重建）。
@@ -142,7 +148,8 @@ return ui.Column(
 | 文件 | 组件 |
 | --- | --- |
 | `ui/node.go` | `Box` / `Row` / `Column` / `Stack` / `Grid` / `Wrap` / `Masonry` / `EqualRow` / `Pick` / `If` / `Each` |
-| `ui/widgets.go` | `Btn` / `Input` / `Switch` / `Checkbox` / `Radio` / `Slider` / `Progress` / `Ring` / `Table` / `Tabs` / `TabsBar` / `Accordion` / `Card` / `Tag` / `Toast` / `Modal` / `TooltipOf` / `MenuItem` 菜单 |
+| `ui/widgets.go` | `Btn` / `Input` / `WrapInput`（按宽折行、高度随行数增长）/ `Switch` / `Checkbox` / `Radio` / `Slider` / `Progress` / `Ring` / `Table` / `Tabs` / `TabsBar` / `Accordion` / `Card` / `Tag` / `Toast` / `Modal` / `TooltipOf` / `MenuItem` 菜单 |
+| `ui/wrapranges.go` | `WrapRanges`（按宽度把文本折成视觉行区间）/ `ScrollStartCached`（单行横向滚动起点），两者都带跨帧缓存；`WrapInput` 与业务自绘输入区共用 |
 | `ui/switch.go` | 开关多样式：`SwitchEx` + `SwitchStyle` / `SwitchDefault` / `SwitchSized`（大中小）/ `SwitchIcon` / `SwitchSparkle` / `SwitchLabeled` / `SwitchGradient` / `SwitchDisabled`；自定义：`WithIcon` / `WithIconNode` / `WithLabels` / `WithLabelNodes` / `WithLabelStyle` / `WithLabelWidth` |
 | `ui/image.go` | `Image` / `ImageSized`（PNG/JPEG/GIF/BMP，后台解码） |
 | `ui/anim.go` | `Tween` / `Spring` / `Keyframes` |
@@ -150,7 +157,8 @@ return ui.Column(
 
 ```go
 ui.Btn("保存", ui.BtnPrimary, save)
-ui.Input("name", value, "请输入", func(v string) { value = v })
+ui.Input("name", value, "请输入", func(v string) { value = v })   // 单行：超宽横向滚动，保持 38px
+ui.WrapInput("addr", value, "请输入", 0, func(v string) { value = v }) // 折行：超宽自动换行，框高随行数增长
 ui.Switch("sw", on, func(v bool) { on = v })          // 默认样式
 ui.SwitchSparkle("boost", on, nil)                    // ✦ 图标 + 紫色渐变发光胶囊
 ui.SwitchLabeled("blur", "ON", "OFF", on, nil)        // 轨道内文字
@@ -255,6 +263,7 @@ ui.FileTree(nodes, ui.TreeOptions{
     Expanded: []string{"ui"},      // 仅首次构建生效
     Selected: "ui/layout.go",
     OnPick:   func(n ui.TreeNode) { sel = n.Key },
+    OnOpen:   func(n ui.TreeNode) { openInEditor(n.Key) }, // 双击（当次不再触发 OnPick）
 })
 ui.TreeSetAllOpen("files", nodes, true) // 工具条：全部展开 / 收起
 

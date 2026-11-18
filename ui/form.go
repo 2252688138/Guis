@@ -571,14 +571,16 @@ func Textarea(key, value, placeholder string, height float32, onChange func(stri
 			inputDragged[key] = false
 			return
 		}
-		sel.SetCaret(caretAtMouse(key, caretAt, sel.Caret), false)
+		x, y := ClickPos()
+		sel.SetCaret(caretAtPoint(key, caretAt, x, y, sel.Caret), false)
 		set()
 	}
 	n.OnPress = func() {
 		inputDragged[key] = false
 		// 按下即获焦：拖选过程中就要显示高亮（未聚焦只画纯文本）
 		SetFocus(key)
-		pos := caretAtMouse(key, caretAt, sel.Caret)
+		x, y := PressPos()
+		pos := caretAtPoint(key, caretAt, x, y, sel.Caret)
 		sel.Anchor, sel.Caret = pos, pos
 		set()
 	}
@@ -789,25 +791,52 @@ func mathRound(v float64, dec int) float64 {
 }
 
 // SearchInput 搜索框：左侧放大镜（矢量方块拼）+ 有内容时右侧清除按钮。
+// 默认无边框（扁平）：不画描边也不铺底色，靠父容器底板体现输入区，聚焦时给一层
+// 很淡的填充作为反馈；需要明确输入边界时改用 SearchInputBordered。
 func SearchInput(key, value, placeholder string, onChange func(string)) *Node {
-	return SearchInputH(key, value, placeholder, FieldH, onChange)
+	return searchInputOpt(key, value, placeholder, FieldH, true, onChange)
 }
 
-// SearchInputH 指定高度的搜索框（紧凑筛选栏用）。
+// SearchInputH 指定高度的无边框搜索框（紧凑筛选栏用）。
 func SearchInputH(key, value, placeholder string, h float32, onChange func(string)) *Node {
+	return searchInputOpt(key, value, placeholder, h, true, onChange)
+}
+
+// SearchInputBordered 带描边的搜索框（表单、独立浮层里需要明确输入边界时用）。
+func SearchInputBordered(key, value, placeholder string, onChange func(string)) *Node {
+	return searchInputOpt(key, value, placeholder, FieldH, false, onChange)
+}
+
+// SearchInputBorderedH 指定高度的带描边搜索框。
+func SearchInputBorderedH(key, value, placeholder string, h float32, onChange func(string)) *Node {
+	return searchInputOpt(key, value, placeholder, h, false, onChange)
+}
+
+// SearchInputFlat 无边框搜索框：只有放大镜 / 文本 / 清除按钮，不画描边也不铺底色，
+// 适合嵌进自带底板的工具栏、侧栏、标题栏（父容器给底色即可）。
+func SearchInputFlat(key, value, placeholder string, onChange func(string)) *Node {
+	return searchInputOpt(key, value, placeholder, FieldH, true, onChange)
+}
+
+// SearchInputFlatH 指定高度的无边框搜索框。
+func SearchInputFlatH(key, value, placeholder string, h float32, onChange func(string)) *Node {
+	return searchInputOpt(key, value, placeholder, h, true, onChange)
+}
+
+// searchInputOpt 搜索框实现；flat=true 时内部走无边框输入框（见 inputNodeOpt）。
+func searchInputOpt(key, value, placeholder string, h float32, flat bool, onChange func(string)) *Node {
 	if placeholder == "" {
 		placeholder = "搜索…"
 	}
 	// 左侧给放大镜留出 20px（否则图标会压在文字上），右侧给清除按钮留位置
 	inputLeftPad[key] = 20
-	field := InputH(key, value, placeholder, h, onChange)
+	field := inputNodeOpt(key, value, placeholder, false, h, flat, onChange)
 	field.St(St().PadOnly(0, 30, 0, 0))
-	glassY := h/2 - 5
-	glass := Stack(
-		Box().St(St().W(9).H(9).R(5).Stroke(1.6, ColTextMuted).AbsTL(0, 0)),
-		Box().St(St().W(5).H(1.6).R(1).BgC(ColTextMuted).AbsTL(8, 9)),
-	).St(St().W(14).H(12))
-	cells := []*Node{Box(glass).St(St().AbsTL(12, glassY)), field}
+	// 放大镜直接用图标字体的 search：以前用手绘小方块拼（9×9 圆角 + 1.6px 描边），
+	// 半径接近半边长时 SDF 的描边带正好压在边界上，实际渲染只有一半透明度。
+	// 注意必须排在 field 之后：field 自带不透明底色，先画图标会被它盖住。
+	glass := IconColored("search", 14, ColTextMuted)
+	cells := []*Node{field, Box(glass).St(St().W(14).H(14).AbsTL(12, h/2-7))}
 	if value != "" {
 		cells = append(cells, Text("×").St(St().Text(14, 500, ColTextMuted).W(22).H(h).
 			CenterYOn().TAlign(AlignCenter)).K(key+"-clear").Tap(func() {

@@ -1,4 +1,4 @@
-package ui
+﻿package ui
 
 import "testing"
 
@@ -14,7 +14,7 @@ func TestCodeEditorMouseHover(t *testing.T) {
 	const line = 2 // 第 3 行 "func foo() int { return 1 }"
 	at := func(col int) (float32, float32) {
 		return e.gutterTotal() - e.ScrollX + e.xOfCol(line, col),
-			codeTopPad + (float32(line)+0.5)*e.lineH() - e.ScrollY
+			e.topPad() + (float32(line)+0.5)*e.lineH() - e.ScrollY
 	}
 
 	x, y := at(6) // foo 中间

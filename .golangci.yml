@@ -1,0 +1,41 @@
+# golangci-lint v2 配置（CI 的 lint job 与本地 `golangci-lint run` 共用）。
+#
+# 原则：只开「零误报、有真实收益」的 linter，保证门禁可长期绿；
+# 逐步加严时改这里即可，不要靠 CI 参数临时放宽。
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # 与 go vet 对齐；ui 包当前零告警，作为基线门禁
+    - govet
+    # 赋值后未使用，纯 bug 探测器，误报极低
+    - ineffassign
+    # 拼写错误（注释/字符串），只认大小写敏感的真正拼错
+    - misspell
+  settings:
+    misspell:
+      locale: US
+  exclusions:
+    # 平台绑定层是手写 syscall / unsafe 结构与第三方移植代码，
+    # 不适配 Go 风格检查（与 CI 里「只 vet ./ui/...」的判断一致）。
+    paths:
+      - third_party
+      - internal/win32
+      - internal/x11
+      - internal/cocoa
+      - internal/uikit
+      - internal/objc
+      - internal/android
+      - \.pb\.go$
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+# 不启用 gofmt 类 formatter：本仓库源码统一 CRLF，gofmt 会要求全量改成 LF，
+# 一开就让门禁永远红（改行尾是独立工程，不在本门禁范围内）。

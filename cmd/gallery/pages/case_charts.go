@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"guis/ui"
 	"math"
+	"time"
 )
 
 // ---- 案例：图表（折线 / 面积 / 柱状 / 饼 / 环形 / 雷达 / 散点）----
@@ -16,6 +17,7 @@ var (
 	chartPicked  = "悬浮查看数值，点击柱 / 扇区 / 数据点"
 	chartMonths  = []string{"1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月"}
 	chartWeeks   = []string{"周一", "周二", "周三", "周四", "周五", "周六", "周日"}
+	chartDays    = chartDates(24)
 	chartLine    *ui.Chart
 	chartArea    *ui.Chart
 	chartBar     *ui.Chart
@@ -23,6 +25,7 @@ var (
 	chartDonut   *ui.Chart
 	chartRadar   *ui.Chart
 	chartScatter *ui.Chart
+	chartCandle  *ui.Chart
 )
 
 // wave 造一段演示数据（相位变化时曲线形状跟着变）。
@@ -75,6 +78,12 @@ func ensureCharts() {
 	chartScatter.Title = "延迟分布"
 	chartScatter.Unit = " ms"
 
+	chartCandle = ui.NewChart(ui.ChartCandle, chartDays)
+	chartCandle.Title = "行情走势"
+	chartCandle.MA = []int{5, 10}
+	chartCandle.ShowVolume = true
+	chartCandle.OnPick = func(s, i int) { pickChart("K 线图", chartCandle, s, i) }
+
 	applyChartData()
 }
 
@@ -116,6 +125,37 @@ func applyChartData() {
 		{Name: "集群 A", Color: "#34d399", Values: wave(42, 26, 26, chartPhase)},
 		{Name: "集群 B", Color: "#a78bfa", Values: wave(64, 30, 26, chartPhase+2.2)},
 	}
+	chartCandle.Series = []ui.Series{candleSeries(len(chartDays), chartPhase)}
+}
+
+// chartDates 连续日期标签（K 线横轴）。
+func chartDates(n int) []string {
+	out := make([]string, n)
+	start := time.Date(2024, 3, 1, 0, 0, 0, 0, time.Local)
+	for i := range out {
+		out[i] = start.AddDate(0, 0, i).Format("01-02")
+	}
+	return out
+}
+
+// round2 价格保留两位小数。
+func round2(v float64) float64 { return math.Round(v*100) / 100 }
+
+// candleSeries 造一段「像行情」的演示 K 线（相位变化时整段重算）。
+func candleSeries(n int, ph float64) ui.Series {
+	out := make([]ui.Candle, n)
+	price := 100.0
+	for i := 0; i < n; i++ {
+		open := price
+		drift := 2.6*math.Sin(float64(i)*0.55+ph) + 1.2*math.Sin(float64(i)*1.7+ph*1.9)
+		cl := open + drift
+		hi := math.Max(open, cl) + 0.6 + 1.8*math.Abs(math.Sin(float64(i)*1.1+ph))
+		lo := math.Min(open, cl) - 0.5 - 1.6*math.Abs(math.Cos(float64(i)*0.9+ph))
+		out[i] = ui.Candle{Open: round2(open), High: round2(hi), Low: round2(lo), Close: round2(cl),
+			Volume: round2(620 + 460*math.Abs(math.Sin(float64(i)*0.7+ph)))}
+		price = cl
+	}
+	return ui.Series{Name: "演示指数", Candles: out}
 }
 
 // pickChart 点击回调：只改文字状态，不动图表缓存。
@@ -133,6 +173,15 @@ func pickChart(kind string, c *ui.Chart, s, i int) {
 		}
 		chartPicked = fmt.Sprintf("选中 %s · %s = %v%s", kind, ser.Name, sum, c.Unit)
 		ui.RequestRedraw()
+		return
+	}
+	if c.Type == ui.ChartCandle {
+		if i >= 0 && i < len(ser.Candles) {
+			k := ser.Candles[i]
+			chartPicked = fmt.Sprintf("选中 %s · %s：开 %.2f 高 %.2f 低 %.2f 收 %.2f",
+				kind, ser.Name, k.Open, k.High, k.Low, k.Close)
+			ui.RequestRedraw()
+		}
 		return
 	}
 	name, label, v := kind, "", 0.0
@@ -159,8 +208,9 @@ func chartCard(title, sub string, chart *ui.Chart, h float32) *ui.Node {
 // chartsCase 图表展示页。
 func chartsCase() *ui.Node {
 	ensureCharts()
+	ensureChartsExtra()
 	return ui.Column(
-		pageHead("图表组件", "纯自绘 / 纹理缓存 / 悬浮提示 / 跟随主题，数据不变时每帧只发 1~2 个 draw call"),
+		pageHead("图表组件", "18 种图形 · 纯自绘 / 纹理缓存 / 悬浮提示 / 跟随主题，数据不变时每帧只发 1~2 个 draw call"),
 		ui.Row(
 			chartCard("折线图", "Smooth 平滑 + 数据点", chartLine, 200),
 			chartCard("面积图", "堆叠 + 半透明填充", chartArea, 200),
@@ -174,11 +224,14 @@ func chartsCase() *ui.Node {
 			chartCard("雷达图", "多系列多边形叠加", chartRadar, 190),
 		).St(ui.St().GapOf(16)),
 		ui.Row(
+			chartCard("K 线图", "OHLC 蜡烛 + MA5 / MA10 均线", chartCandle, 240),
+		).St(ui.St().GapOf(16)),
+		ui.Row(
 			chartCard("散点图", "数值点密度展示", chartScatter, 190),
 			ui.Card(
 				ui.Title("实现与性能", "为什么图表不卡也不吃内存"),
-				ui.Text("· 网格 / 柱 / 文字全部用原生顶点绘制，零纹理、永远清晰").St(ui.St().Text(11.5, 400, ui.ColTextDim)),
-				ui.Text("· 只有弧线 / 斜线 / 多边形（折线、饼、雷达、散点）光栅成一张 RGBA 纹理").St(ui.St().Text(11.5, 400, ui.ColTextDim)),
+				ui.Text("· 网格 / 柱 / 文字全部用原生顶点绘制（含水平条形 / 瀑希 / 箱线 / 热力图），零纹理、永远清晰").St(ui.St().Text(11.5, 400, ui.ColTextDim)),
+				ui.Text("· 只有弧线 / 斜线 / 多边形（折线、饼、瑰图、气泡、分时、漏斗、仪表盘）光栅成一张 RGBA 纹理").St(ui.St().Text(11.5, 400, ui.ColTextDim)),
 				ui.Text("· 纹理按「尺寸 + 缩放 + 主题 + 数据指纹」缓存，不变则每帧 0 CPU 光栅化").St(ui.St().Text(11.5, 400, ui.ColTextDim)),
 				ui.Text("· 总预算 24MB，超出按 LRU 淘汰，窗口销毁随 GL 上下文释放").St(ui.St().Text(11.5, 400, ui.ColTextDim)),
 				ui.Text("· 悬浮高亮与提示框全用原生图元叠加，鼠标移动不重建纹理").St(ui.St().Text(11.5, 400, ui.ColTextDim)),
@@ -194,5 +247,6 @@ func chartsCase() *ui.Node {
 				ui.RequestRedraw()
 			}),
 		).St(ui.St().GapOf(12)).AlignTo(ui.AlignCenter),
+		ui.Column(chartsExtraRows()...).St(ui.St().GapOf(16)),
 	).St(ui.St().Padding(26).GapOf(16))
 }

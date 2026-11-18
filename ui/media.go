@@ -274,6 +274,15 @@ func isRemotePath(p string) bool {
 	return false
 }
 
+// isReconnectable 是否支持 ffmpeg 的 -reconnect* 一族参数。
+//
+// 这些参数属于 http/https 协议，rtmp / rtsp / udp 不认：给 RTMP 加上会直接报
+// "Option reconnect not found" 并退出，表现为窗口一直拿不到画面。
+func isReconnectable(p string) bool {
+	lp := strings.ToLower(p)
+	return strings.HasPrefix(lp, "http://") || strings.HasPrefix(lp, "https://")
+}
+
 // firstLines 取前 n 行非空文本（错误提示用）。
 func firstLines(s string, n int) string {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
@@ -1273,8 +1282,10 @@ func (s *MediaSource) videoArgs(start time.Duration) []string {
 	args := []string{"-v", "error", "-nostdin", "-hide_banner"}
 	args = append(args, "-threads", decodeThreads(), "-filter_threads", "1")
 	if isRemotePath(s.path) {
-		args = append(args, "-rw_timeout", "15000000",
-			"-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "4")
+		args = append(args, "-rw_timeout", "15000000")
+		if isReconnectable(s.path) {
+			args = append(args, "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "4")
+		}
 	}
 	if s.cfg.HWAccel {
 		args = append(args, "-hwaccel", "d3d11va")
@@ -1299,8 +1310,10 @@ func (s *MediaSource) videoArgs(start time.Duration) []string {
 func (s *MediaSource) audioArgs(start time.Duration) []string {
 	args := []string{"-v", "error", "-nostdin", "-hide_banner", "-threads", "1"}
 	if isRemotePath(s.path) {
-		args = append(args, "-rw_timeout", "15000000",
-			"-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "4")
+		args = append(args, "-rw_timeout", "15000000")
+		if isReconnectable(s.path) {
+			args = append(args, "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "4")
+		}
 	}
 	if start > 0 {
 		args = append(args, "-ss", secArg(start))
@@ -1343,13 +1356,32 @@ func (s *MediaSource) MediaClock() (time.Duration, bool) {
 	dev, start, on, paused, closed := s.audio, s.start, s.audioDevOn, s.paused, s.closed
 	done := s.clockDone
 	s.mu.Unlock()
-	if !on || dev == nil || paused || closed || done {
+	if on && dev != nil && !paused && !closed && !done {
+		if d, ok := dev.Position(); ok {
+			return start + d, true
+		}
+	}
+	return s.liveClock()
+}
+
+// liveClock 直播源（远端 + 未知时长）的播放时钟：跟随最新解码帧。
+//
+// 直播没有总时长，播放位置若按墙钟往前跑会一直领先解码器（建连就要 1~2 秒），
+// 每次取帧都等预算超时，画面只剩 2~3fps。跟解码进度走才拿得到新鲜的帧。
+func (s *MediaSource) liveClock() (time.Duration, bool) {
+	if s == nil || !isRemotePath(s.path) || s.info.Duration > 0 {
 		return 0, false
 	}
-	if d, ok := dev.Position(); ok {
-		return start + d, true
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.paused || s.eof || s.scrubbing {
+		return 0, false
 	}
-	return 0, false
+	last := s.lastBuffered()
+	if last < 0 {
+		return 0, false
+	}
+	return s.vstart + time.Duration(float64(last)/s.fps*float64(time.Second)), true
 }
 
 // markClockDone 音频流已播完（或音频输出结束）：停止使用设备时钟。

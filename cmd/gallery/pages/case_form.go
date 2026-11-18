@@ -135,7 +135,7 @@ func formCase() *ui.Node {
 
 		ui.Card(
 			ui.Title("搜索与标签", "SearchInput 带清除按钮；Chip 可切换选中"),
-			ui.FormItem("", false, "", ui.SearchInput("form-search", formSearch, "搜索组件 / 成员…", func(v string) {
+			ui.FormItem("", false, "", ui.SearchInputBordered("form-search", formSearch, "搜索组件 / 成员…", func(v string) {
 				formSearch = v
 			})),
 			ui.Row(

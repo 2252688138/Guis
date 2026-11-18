@@ -62,7 +62,7 @@ func SelectionArea(key string, children ...*Node) *Node {
 	area := Stack(children...).St(St().Wp(100))
 	area.K(key)
 	area.OnPress = func() {
-		x, y := MousePos()
+		x, y := PressPos()
 		if r, ok := LastFrameOf(key); ok {
 			sel.Active = true
 			sel.X0, sel.Y0 = x-r.X, y-r.Y

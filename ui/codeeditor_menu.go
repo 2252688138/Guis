@@ -31,12 +31,12 @@ func (e *CodeEditorState) menuItems() []CodeMenuItem {
 		{Label: "悬停信息", Hint: "F1", Run: func() { e.RequestHover() }},
 		{Label: "重命名符号…", Hint: "F2", Run: func() { e.RequestRename() }},
 		{Sep: true},
-		{Label: "行注释切换", Hint: "Ctrl+/", Run: func() { e.ToggleComment() }},
 		{Label: "复制当前行", Hint: "Ctrl+D", Run: func() { e.DuplicateLine() }},
-		{Label: "格式化文档", Hint: "Shift+Alt+F", Run: func() { e.FormatDocument() }},
 		{Label: "软换行", Hint: "Alt+Z", Checked: e.Wrap, Run: func() { e.SetWrap(!e.Wrap) }},
 		{Label: "折叠 / 展开块", Hint: "Ctrl+Shift+[", Run: func() { e.ToggleFoldAtCaret() }},
 		{Label: "问题面板", Hint: "F8", Run: func() { e.ToggleDiagPanel() }},
+		{Label: "符号大纲…", Hint: "Ctrl+Shift+O", Run: func() { e.ToggleOutline() }},
+		{Label: "切换书签", Hint: "Ctrl+F2", Run: func() { e.ToggleBookmark() }},
 	}
 	if !hasSel {
 		for i := range items {
@@ -174,7 +174,7 @@ func (e *CodeEditorState) openBuiltinCompletion() {
 	if ok {
 		g := e.gutterTotal()
 		x := rect.X + g - e.ScrollX + e.xOfCol(e.Pos.Line, e.Pos.Col)
-		y := rect.Y + codeTopPad + float32(e.Pos.Line+1)*e.lineH() - e.ScrollY
+		y := rect.Y + e.topPad() + float32(e.Pos.Line+1)*e.lineH() - e.ScrollY
 		// 相对节点
 		e.compX = x - rect.X
 		e.compY = y - rect.Y
@@ -402,6 +402,13 @@ func CodeEditorShortcuts() [][2]string {
 		{"F12", "转到定义"},
 		{"Alt+↑ / Alt+↓", "上移 / 下移当前行"},
 		{"Shift+Alt+F", "格式化文档"},
+		{"Ctrl+Shift+O", "符号大纲（输入过滤，↑↓ 选择，Enter 跳转）"},
+		{"Ctrl+Shift+L", "全部匹配转多光标（查找面板内）"},
+		{"Ctrl+F2", "切换当前行书签"},
+		{"Alt+F2 / Shift+Alt+F2", "下一个 / 上一个书签"},
+		{"Alt+↑ / Alt+↓（查找面板内）", "翻搜索历史"},
+		{"Ctrl+= / Ctrl+- / Ctrl+滚轮", "字号放大 / 缩小"},
+		{"输入 ( [ { \" '", "自动补右符号；选中文本时转为包裹"},
 		{"Tab / Shift+Tab", "缩进 / 反缩进（多行选区整体生效）"},
 		{"Ctrl+← / Ctrl+→", "按词移动"},
 		{"Home / End", "行首 / 行尾（Home 两段式）"},

@@ -8,6 +8,7 @@ package ui
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"guis/internal/text"
@@ -125,12 +126,17 @@ type wrapKey struct {
 type wrapEntry struct {
 	lines []string
 	n     int // 缓存的行数（总预算控制用）
+	// use 最近一次命中的时钟值（近似 LRU）：淘汰时优先丢掉最久没被用到的条目。
+	// 存指针 + 原子读写，命中路径（RLock）也能刷新它，不必升级写锁。
+	use atomic.Uint64
 }
 
 var (
 	wrapMu        sync.RWMutex
-	wrapMemo      = make(map[wrapKey]wrapEntry, 256)
+	wrapMemo      = make(map[wrapKey]*wrapEntry, 256)
 	wrapLineCount int // 缓存里的总行数（预算控制用）
+	// wrapClock 单调递增的使用时钟（每次命中 / 写入 +1）。
+	wrapClock atomic.Uint64
 )
 
 const (
@@ -141,9 +147,22 @@ const (
 	wrapMemoMax = 4096
 	// wrapLineBudget 缓存里的总行数预算（一行 ≈ 16B 切片 + 子串引用）。
 	wrapLineBudget = 40000
+	// wrapEvictSample 淘汰时的采样条数：每轮只看这么多条，挑最冷的删。
+	// 固定成本（不因缓存变大而变慢），效果接近真 LRU。
+	wrapEvictSample = 16
 )
 
 // wrapLinesCached 折行并缓存结果。
+//
+// wrapCacheHit / wrapCacheMiss 是命中率计数器（DevTools 面板与
+// GUIS_FPS 诊断共用），命中率低说明缓存键在抖动。
+var wrapCacheHit, wrapCacheMiss atomic.Uint64
+
+// wrapCacheHits 折行缓存命中次数（进程级累计）。
+func wrapCacheHits() uint64 { return wrapCacheHit.Load() }
+
+// wrapCacheMisses 折行缓存未命中次数（进程级累计）。
+func wrapCacheMisses() uint64 { return wrapCacheMiss.Load() }
 // 返回的切片为缓存共享数据，调用方只读，禁止 append / 修改元素。
 //
 // 超出预算时按 map 的随机迭代顺序淘汰一批（约 1/8），不做整体清空：
@@ -155,31 +174,61 @@ func wrapLinesCached(f *text.Font, s string, maxW float32) []string {
 	key := wrapKey{gen: f.Gen(), s: s, w: int32(maxW*2 + 0.5)}
 	wrapMu.RLock()
 	if e, ok := wrapMemo[key]; ok {
+		e.use.Store(wrapClock.Add(1))
+		lines := e.lines
 		wrapMu.RUnlock()
-		return e.lines
+		wrapCacheHit.Add(1)
+		return lines
 	}
 	wrapMu.RUnlock()
+	wrapCacheMiss.Add(1)
 
 	lines := wrapTextLines(f, s, maxW)
 
 	wrapMu.Lock()
 	if _, exists := wrapMemo[key]; !exists {
-		dropBudget := wrapMemoMax / 8
-		if dropBudget < 32 {
-			dropBudget = 32
-		}
+		// 一次只淘汰 16 条：旧实现一轮删掉 1/8（512 条），热点段落可能在
+		// 某次批量淘汰里被当成冷样本误杀；按需少量淘汰更平滑，成本也更低。
+		dropBudget := wrapEvictSample
 		for drop := 0; drop < dropBudget && (len(wrapMemo) >= wrapMemoMax || wrapLineCount+len(lines) > wrapLineBudget); drop++ {
-			for k, e := range wrapMemo {
-				wrapLineCount -= e.n
-				delete(wrapMemo, k)
+			if !evictColdestWrap() {
 				break
 			}
 		}
-		wrapMemo[key] = wrapEntry{lines: lines, n: len(lines)}
+		e := &wrapEntry{lines: lines, n: len(lines)}
+		e.use.Store(wrapClock.Add(1))
+		wrapMemo[key] = e
 		wrapLineCount += len(lines)
 	}
 	wrapMu.Unlock()
 	return lines
+}
+
+// evictColdestWrap 淘汰一条「最久没被命中」的折行缓存（近似 LRU，调用方需持写锁）。
+//
+// 旧实现是 map 随机顺序删，热点段落和一次性段落被删的概率一样：
+// 长文档里刚折好行的段落可能在下一轮淘汰时就被丢掉，白算一次。
+// 这里随机采样 wrapEvictSample 条，丢掉其中最冷的——成本固定，效果接近真 LRU。
+func evictColdestWrap() bool {
+	var coldest *wrapEntry
+	var coldestKey wrapKey
+	found := false
+	sampled := 0
+	for k, e := range wrapMemo {
+		if !found || e.use.Load() < coldest.use.Load() {
+			coldest, coldestKey, found = e, k, true
+		}
+		sampled++
+		if sampled >= wrapEvictSample {
+			break
+		}
+	}
+	if !found {
+		return false
+	}
+	wrapLineCount -= coldest.n
+	delete(wrapMemo, coldestKey)
+	return true
 }
 
 // clearWrapMemo 清空折行缓存（全局缩放 / 锐度变化时调用）。
@@ -189,7 +238,7 @@ func wrapLinesCached(f *text.Font, s string, maxW float32) []string {
 func clearWrapMemo() {
 	wrapMu.Lock()
 	if len(wrapMemo) > 0 {
-		wrapMemo = make(map[wrapKey]wrapEntry, 256)
+		wrapMemo = make(map[wrapKey]*wrapEntry, 256)
 		wrapLineCount = 0
 	}
 	wrapMu.Unlock()

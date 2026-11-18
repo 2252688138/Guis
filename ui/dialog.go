@@ -99,12 +99,15 @@ type DialogOpts struct {
 
 // ModalPanel 通用弹窗：遮罩 + 卡片（标题 / 图标 / 正文 / 底部按钮），带淡入动画。
 func ModalPanel(o DialogOpts) *Node {
-	if !o.Open {
-		return nil
-	}
 	if o.Key == "" {
 		o.Key = "dlg-" + o.Title
 	}
+	// 出场：关掉之后再用 Present 保留一小段，让 PopOut / FadeOut 播完再真正消失
+	if !Present("dlgpanel:"+o.Key, o.Open, 0.16) {
+		return nil
+	}
+	closing := !o.Open
+	opening := animOnOpen("dlgpanel:"+o.Key, o.Open)
 	if o.Width <= 0 {
 		o.Width = 420
 	}
@@ -170,7 +173,12 @@ func ModalPanel(o DialogOpts) *Node {
 	card := Column(cells...).St(St().W(o.Width).Padding(22).R(18).GapOf(14).
 		BgC(ColPanelDeep).Stroke(1, ColStroke).
 		Shadow(48, 18+8*(1-t), 0, "rgba(0,0,0,0.55)").
-		Fade(t).AbsCenter())
+		Fade(t).AbsCenter()).
+		Anim(PopIn(0.18).At(0.94)).
+		AnimIf(closing, PopOut(0.16))
+	if opening {
+		card.Replay()
+	}
 
 	scrim := dlgScrim(t, nil)
 	if o.Closable {
@@ -184,7 +192,8 @@ func ModalPanel(o DialogOpts) *Node {
 	if o.Blur > 0 {
 		scrim.St(St().Backdrop(o.Blur, nil))
 	}
-	return Stack(scrim, card).St(St().AbsFill()).K(o.Key)
+	return Stack(scrim, card).St(St().AbsFill()).K(o.Key).
+		AnimIf(closing, FadeOut(0.16))
 }
 
 // AlertDlg 提示弹窗（单个「知道了」按钮）。
@@ -294,12 +303,15 @@ type DrawerOpts struct {
 
 // Drawer 右侧滑出抽屉（AbsFill 遮罩 + 右侧面板，淡入）。
 func Drawer(o DrawerOpts) *Node {
-	if !o.Open {
-		return nil
-	}
 	if o.Key == "" {
 		o.Key = "drawer-" + o.Title
 	}
+	// 出场：滑出动画播完再真正消失
+	if !Present("drawer:"+o.Key, o.Open, 0.22) {
+		return nil
+	}
+	closing := !o.Open
+	opening := animOnOpen("drawer:"+o.Key, o.Open)
 	if o.Width <= 0 {
 		o.Width = 380
 	}
@@ -319,12 +331,18 @@ func Drawer(o DrawerOpts) *Node {
 	}
 	panel := Column(cells...).St(St().W(o.Width).Hp(100).Padding(20).GapOf(14).
 		BgC(ColPanelDeep).Stroke(1, ColStroke).
-		Shadow(48, 8, 0, "rgba(0,0,0,0.55)").Fade(t).AbsTR(0, 0))
+		Shadow(48, 8, 0, "rgba(0,0,0,0.55)").Fade(t).AbsTR(0, 0)).
+		Anim(SlideIn(SideRight, 40, 0.22)).
+		AnimIf(closing, SlideOut(SideRight, 40, 0.2))
+	if opening {
+		panel.Replay()
+	}
 	scrim := dlgScrim(t, func() {
 		if o.OnClose != nil {
 			o.OnClose()
 		}
 		RequestRedraw()
 	})
-	return Stack(scrim, panel).St(St().AbsFill()).K(o.Key)
+	return Stack(scrim, panel).St(St().AbsFill()).K(o.Key).
+		AnimIf(closing, FadeOut(0.2))
 }

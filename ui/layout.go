@@ -45,8 +45,25 @@ func SetViewport(w, h float32) {
 	viewportW, viewportH = w, h
 }
 
+// enterViewport 每帧渲染前把视口切到当前窗口。
+//
+// 多窗口交替渲染时，视图构建（view()）早于 Layout，而视口是全局的：
+// 若不切回来，主窗口会读到刚画完的独立窗口（数字人）的尺寸，
+// 表现为「开独立窗口后主界面被压缩」以及尺寸在两个值之间来回跳（视觉闪动）。
+func enterViewport(w, h float32) {
+	if w > 0 && h > 0 {
+		viewportW, viewportH = w, h
+		viewportInited = true
+	}
+}
+
 // ViewportW 返回最近一次布局的视口宽度（逻辑像素），用于响应式分支。
-func ViewportW() float32 { return viewportW }
+func ViewportW() float32 {
+	if a := currentApp.Load(); a != nil && a.winW > 0 {
+		return a.winW
+	}
+	return viewportW
+}
 
 // PixelScale 当前窗口的物理像素比（100% = 1）。位图资源按它解码后 1:1 贴图才不发虚。
 func PixelScale() float32 {
@@ -59,7 +76,12 @@ func PixelScale() float32 {
 }
 
 // ViewportH 返回最近一次布局的视口高度（逻辑像素）。
-func ViewportH() float32 { return viewportH }
+func ViewportH() float32 {
+	if a := currentApp.Load(); a != nil && a.winH > 0 {
+		return a.winH
+	}
+	return viewportH
+}
 
 // BP 按视口宽度选择断点值：<640 取 xs，<960 取 sm，<1280 取 md，其余 lg。
 func BP[T any](xs, sm, md, lg T) T {

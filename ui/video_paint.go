@@ -8,6 +8,8 @@
 package ui
 
 import (
+	"strings"
+
 	"guis/internal/geom"
 	"guis/internal/gpu"
 )
@@ -118,7 +120,7 @@ func (a *App) paintVideoPlaceholder(n *Node, r geom.Rect, st *Style) {
 	if p := n.Video; p != nil {
 		switch {
 		case p.Err() != nil:
-			label = "取帧失败"
+			label = "取帧失败：" + shortErrText(p.Err().Error())
 		case p.Source != nil:
 			label = "解码中…"
 		}
@@ -133,3 +135,12 @@ func (a *App) paintVideoPlaceholder(n *Node, r geom.Rect, st *Style) {
 
 // fitVideoRect 移到 video.go：它是纯几何计算，与平台无关，
 // 这样 video_test.go 在所有平台都能跑。
+
+// shortErrText 错误文本压成一行并截断（占位提示里显示，太长会把占位撑破）。
+func shortErrText(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > 48 {
+		return string(r[:48]) + "…"
+	}
+	return s
+}

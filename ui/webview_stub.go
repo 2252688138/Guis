@@ -1,4 +1,4 @@
-//go:build !windows && !js
+//go:build !js
 
 // guis
 // Author  : Mr.Shu
@@ -7,199 +7,142 @@
 
 package ui
 
+// 降级后端（兜底）：既没有系统内嵌浏览器能力、也没有可用的 Chromium 系浏览器时使用。
+//
+// 它不出画面，只维护状态（地址 / 标题 / 缩放 / 静音），并且提供
+// OpenExternal() 让调用方一键交给系统浏览器打开 —— 保证同一套 UI 代码
+// 在任何平台都能编译、能跑、有明确提示。
+
 import (
-	"errors"
+	"strings"
 
 	"guis/internal/geom"
 )
 
-// 非 Windows 桌面端的内嵌浏览器垫片。
-//
-// Windows 走 WebView2（Chromium 子窗口 + DirectComposition 图层）；这些平台需要
-// WKWebView（macOS）/ WebKitGTK（Linux）等系统组件，尚未接入。
-// 这里保留**与 Windows 完全一致的 API**，创建时返回明确错误，组件降级为占位卡片，
-// 业务代码无需任何改动即可编译运行。
-
-// errNoWebView 本平台没有可用的内嵌浏览器。
-var errNoWebView = errors.New("ui: 当前平台尚未接入内嵌浏览器（可用 HasCap(CapWebView) 判断）")
-
-// WebViewOptions 内嵌浏览器选项（字段与 Windows 端一致）。
-type WebViewOptions struct {
-	URL         string
-	HTML        string
-	UserDataDir string
-	Zoom        float64
-	Transparent bool
-	OnChange    func()
-}
-
-// WebView 内嵌浏览器（本平台占位：记录状态但不产生画面）。
-type WebView struct {
+// stubWebView 降级后端：记录状态、不出画面。
+type stubWebView struct {
 	url     string
-	html    string
 	title   string
-	loading bool
-	visible bool
+	rad     float32
 	zoom    float64
-	radius  float32
+	muted   bool
+	ua      string
+	loading bool
 }
 
-// NewWebView 在当前窗口创建内嵌浏览器（本平台返回不支持）。
-func NewWebView(opts WebViewOptions) (*WebView, error) {
-	return NewWebViewIn(currentApp.Load(), opts)
-}
-
-// NewWebViewIn 在指定窗口创建内嵌浏览器（本平台返回不支持）。
-func NewWebViewIn(a *App, opts WebViewOptions) (*WebView, error) {
-	wv := &WebView{url: opts.URL, html: opts.HTML, zoom: 1, visible: true}
-	if opts.OnChange != nil {
-		opts.OnChange()
+// newStubWebView 创建降级后端（不返回错误：让同一套 UI 代码处处能跑）。
+func newStubWebView(a *App, opts WebViewOptions) (webViewBackend, error) {
+	b := &stubWebView{
+		rad:   opts.Radius,
+		zoom:  opts.Zoom,
+		muted: opts.Muted,
+		ua:    strings.TrimSpace(opts.UserAgent),
 	}
-	return wv, errNoWebView
-}
-
-// WebViewAvailable 当前平台是否可用内嵌浏览器。
-func WebViewAvailable() bool { return false }
-
-// Ready 是否已就绪（占位实现：恒 false）。
-func (wv *WebView) Ready() bool { return false }
-
-// Err 当前错误。
-func (wv *WebView) Err() error { return errNoWebView }
-
-// Navigate 打开地址。
-func (wv *WebView) Navigate(url string) {
-	if wv != nil {
-		wv.url, wv.loading = url, false
+	if b.zoom <= 0 {
+		b.zoom = 1
 	}
-}
-
-// LoadHTML 加载 HTML。
-func (wv *WebView) LoadHTML(html string) {
-	if wv != nil {
-		wv.html, wv.loading = html, false
+	switch {
+	case strings.TrimSpace(opts.HTML) != "":
+		b.url = "about:blank"
+		b.title = "本地 HTML 页面"
+	case strings.TrimSpace(opts.URL) != "":
+		b.url = normalizeURL(opts.URL)
+		b.title = b.url
 	}
+	return b, nil
 }
 
-// Back 后退（空操作）。
-func (wv *WebView) Back() {}
+func (b *stubWebView) Ready() bool      { return false }
+func (b *stubWebView) Err() error       { return errNoWebView }
+func (b *stubWebView) Platform() string { return "stub" }
 
-// Forward 前进（空操作）。
-func (wv *WebView) Forward() {}
+func (b *stubWebView) Navigate(url string) {
+	if b == nil {
+		return
+	}
+	b.url = normalizeURL(url)
+	b.title = b.url
+}
 
-// Reload 刷新（空操作）。
-func (wv *WebView) Reload() {}
+func (b *stubWebView) LoadHTML(html string) {
+	if b == nil {
+		return
+	}
+	b.url = "about:blank"
+	b.title = "本地 HTML 页面"
+}
 
-// Stop 停止加载（空操作）。
-func (wv *WebView) Stop() {}
+func (b *stubWebView) Back()    {}
+func (b *stubWebView) Forward() {}
+func (b *stubWebView) Focus()   {}
 
-// Focus 聚焦（空操作）。
-func (wv *WebView) Focus() {}
-
-// SetRadius 圆角半径。
-func (wv *WebView) SetRadius(r float32) {
-	if wv != nil {
-		wv.radius = r
+func (b *stubWebView) Reload() {
+	if b != nil {
+		b.loading = true
+		b.loading = false
 	}
 }
 
-// SetZoom 缩放。
-func (wv *WebView) SetZoom(z float64) {
-	if wv != nil {
-		wv.zoom = z
+func (b *stubWebView) Stop() {
+	if b != nil {
+		b.loading = false
 	}
 }
 
-// ExecuteScript 注入脚本（空操作）。
-func (wv *WebView) ExecuteScript(js string) {}
+func (b *stubWebView) Close() {}
 
-// URL 当前地址。
-func (wv *WebView) URL() string {
-	if wv == nil {
+func (b *stubWebView) SetRadius(r float32) {
+	if b != nil {
+		b.rad = r
+	}
+}
+
+func (b *stubWebView) SetZoom(z float64) {
+	if b != nil {
+		b.zoom = clampWebViewZoom(z)
+	}
+}
+
+func (b *stubWebView) SetMuted(m bool) {
+	if b != nil {
+		b.muted = m
+	}
+}
+
+func (b *stubWebView) SetUserAgent(ua string) {
+	if b != nil {
+		b.ua = strings.TrimSpace(ua)
+	}
+}
+
+func (b *stubWebView) Exec(js string) {}
+
+func (b *stubWebView) ExecAsync(js string, cb func(result string)) {
+	if cb != nil {
+		cb("")
+	}
+}
+
+func (b *stubWebView) URL() string {
+	if b == nil {
 		return ""
 	}
-	return wv.url
+	return b.url
 }
 
-// Title 页面标题。
-func (wv *WebView) Title() string {
-	if wv == nil {
+func (b *stubWebView) Title() string {
+	if b == nil {
 		return ""
 	}
-	return wv.title
+	return b.title
 }
 
-// Loading 是否加载中。
-func (wv *WebView) Loading() bool { return wv != nil && wv.loading }
+func (b *stubWebView) Loading() bool { return b != nil && b.loading }
 
-// CanGoBack 能否后退。
-func (wv *WebView) CanGoBack() bool { return false }
+func (b *stubWebView) CanGoBack() bool { return false }
 
-// CanGoForward 能否前进。
-func (wv *WebView) CanGoForward() bool { return false }
+func (b *stubWebView) CanGoForward() bool { return false }
 
-// Close 关闭浏览器。
-func (wv *WebView) Close() {
-	if wv != nil {
-		wv.visible = false
-	}
-}
+func (b *stubWebView) Place(r geom.Rect, scale float32) {}
 
-// Browser 浏览器组合节点（地址栏 + 页面区域）。
-func Browser(wv *WebView) *Node {
-	return Column(
-		WebViewBar(wv, WebViewBarOptions{}),
-		WebViewNode(wv),
-	).St(St().GrowTo(1).GapOf(8))
-}
-
-// WebViewNode 页面区域节点（本平台渲染占位卡片）。
-func WebViewNode(wv *WebView) *Node {
-	return Card(
-		Empty("内嵌浏览器未启用", "当前平台尚未接入 WebView（Windows 使用 WebView2）"),
-	).St(St().GrowTo(1).PadXY(16, 16))
-}
-
-// WebViewBarOptions 地址栏选项（字段与 Windows 端一致）。
-type WebViewBarOptions struct {
-	Address   string
-	Key       string
-	OnAddress func(string)
-	OnGo      func()
-	ShowTitle bool
-}
-
-// WebViewBar 自绘浏览器工具条（本平台给出禁用态，保持布局一致）。
-func WebViewBar(wv *WebView, o WebViewBarOptions) *Node {
-	addr := o.Address
-	if addr == "" && wv != nil {
-		addr = wv.URL()
-	}
-	return Row(
-		Button("←", nil).St(St().W(32)),
-		Button("→", nil).St(St().W(32)),
-		Button("↻", nil).St(St().W(32)),
-		Box().St(St().GrowTo(1).H(32).R(8).BgC(ColBgSoft).Stroke(1, ColStroke)).Add(
-			Text(addr).St(St().AbsFill().Text(12, 400, ColPlaceholder).CenterYOn().PadXY(10, 0)),
-		),
-		Button("打开", nil).St(St().W(56)),
-	).St(St().GapOf(8).H(40))
-}
-
-// WebViewStatus 状态标签（本平台提示不可用）。
-func WebViewStatus(wv *WebView) *Node {
-	return Tag("未启用 WebView", ColWarn)
-}
-
-// syncWebViews 同步子窗口位置（本平台无子窗口，空操作）。
-func (a *App) syncWebViews() {}
-
-// closeWebViews 释放内嵌浏览器。
-func (a *App) closeWebViews() {
-	a.webviews = nil
-	a.wvRects = nil
-	a.wvShown = nil
-}
-
-// paintWebView 内嵌浏览器绘制：本平台无独立子窗口，跳过。
-func (a *App) paintWebView(n *Node, r geom.Rect, st *Style) {}
+func (b *stubWebView) Hide() {}

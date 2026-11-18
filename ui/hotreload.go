@@ -47,6 +47,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -56,6 +57,15 @@ const (
 	hotEnvState = "GUIS_HOT_STATE"
 	// hotEnvMode 手动开关：GUIS_HOT=0 关闭，GUIS_HOT=1 强制开启。
 	hotEnvMode = "GUIS_HOT"
+	// hotEnvPrewarm 预热交接标记：设了它表示本进程是「先隐藏建窗、渲染首帧，
+	// 等守护进程下达 show 再显示」的新一代进程，用于把旧窗口关掉之前先把新窗口
+	// 画到位（视觉上没有窗口消失的空档）。
+	hotEnvPrewarm = "GUIS_HOT_PREWARM"
+	// hotEnvReady 就绪文件路径：首帧呈现后由子进程写入，守护进程轮询它判断可以交接。
+	hotEnvReady = "GUIS_HOT_READY"
+	// hotPrewarmFallback 预热进程迟迟收不到 show（守护进程异常退出等）时自己显示，
+	// 不能留一个永远看不见的窗口。
+	hotPrewarmFallback = 10 * time.Second
 )
 
 // hotSaved 一次热重载重启需要跨进程携带的现场。
@@ -76,6 +86,43 @@ var hotStop atomic.Bool
 
 // hotStopRequested runLoop 每轮检查：热重载要求退出时为 true。
 func hotStopRequested() bool { return hotStop.Load() }
+
+// hotShowPending 守护进程的 show 指令（窗口操作只能在 UI 线程做，这里只置标志）。
+var hotShowPending atomic.Bool
+
+// hotShown 预热窗口已经显示过（之后渲染循环按可见窗口正常工作）。
+var hotShown atomic.Bool
+
+// hotPrewarmActive 当前进程是否由守护进程按「预热交接」方式启动。
+func hotPrewarmActive() bool {
+	return os.Getenv(hotEnvChild) != "" && os.Getenv(hotEnvPrewarm) == "1"
+}
+
+// hotHoldVisible 首帧已经画好但还不能显示窗口（预热中、守护进程尚未下达 show）。
+//
+// 渲染循环据此区分「预热替换中」与「用户把窗口收进托盘」：前者要继续正常出帧，
+// 否则会被当成隐藏窗口跳过渲染并释放字体/纹理缓存，交接时反而卡一下。
+func hotHoldVisible() bool {
+	return hotPrewarmActive() && !hotShown.Load()
+}
+
+// hotShowRequested runLoop 每轮检查：守护进程要求把预热窗口显示出来。
+func hotShowRequested() bool { return hotShowPending.Swap(false) }
+
+// hotPrewarmShown 标记预热窗口已显示。
+func hotPrewarmShown() { hotShown.Store(true) }
+
+// hotPrewarmMarkReady 首帧呈现后写就绪文件（原子替换），通知守护进程可以交接。
+func hotPrewarmMarkReady() {
+	p := os.Getenv(hotEnvReady)
+	if p == "" {
+		return
+	}
+	tmp := p + ".tmp"
+	if os.WriteFile(tmp, []byte("ready"), 0o644) == nil {
+		_ = os.Rename(tmp, p)
+	}
+}
 
 var (
 	hotStateMu      sync.Mutex
@@ -151,6 +198,15 @@ func hotStartChild() {
 	}
 	go hotReadControl()
 	go hotHandleInterrupt()
+	// 兜底：预热进程等不到 show 就自己显示，避免守护进程异常时留下一个看不见的窗口。
+	if hotPrewarmActive() {
+		go func() {
+			time.Sleep(hotPrewarmFallback)
+			if !hotShown.Load() {
+				hotShowPending.Store(true)
+			}
+		}()
+	}
 }
 
 // hotHandleInterrupt 子进程侧 Ctrl+C：与守护进程一致，先保存现场再退出。
@@ -181,6 +237,14 @@ func hotReadControl() {
 		case "quit":
 			hotStop.Store(true)
 			return
+		case "show":
+			// 预热窗口就绪，可以显示了：窗口/GL 操作必须留在 UI 线程，这里只置标志。
+			hotShowPending.Store(true)
+		case "saveonly":
+			// 只保存现场、不退出：交接前让旧进程把最新窗口几何与业务状态落盘，
+			// 预热中的新进程启动时就能恢复到当前位置，而不是上一轮的位置。
+			hotSaveStateNow()
+			fmt.Fprintln(os.Stdout, "saved")
 		}
 	}
 	// 控制管道关闭 = 守护进程已退出（Ctrl+C / 被强杀 / 控制台关闭）：跟着退出，
@@ -257,9 +321,18 @@ func hotApplyRestore(a *App) {
 // hotPendingMax 恢复现场时窗口尚未显示，最大化留到首帧之后再做。
 var hotPendingMax bool
 
-// hotAfterReveal 首帧呈现、窗口显示之后调用：补上最大化状态。
+// hotAfterReveal 首帧呈现后调用：预热进程在这里发就绪信号，窗口显示后补上最大化状态。
 func hotAfterReveal(a *App) {
-	if a == nil || !hotPendingMax {
+	if a == nil {
+		return
+	}
+	// 预热交接：首帧已经画完（窗口仍隐藏着），通知守护进程「新窗口可以上了」。
+	if hotPrewarmActive() && !hotShown.Load() {
+		hotPrewarmMarkReady()
+	}
+	// 预热时窗口还没显示，最大化要留到 show 之后再补，
+	// 否则 ToggleMaximize 会把窗口提前亮出来（又变成先闪一下）。
+	if !hotPendingMax || hotHoldVisible() {
 		return
 	}
 	hotPendingMax = false

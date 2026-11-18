@@ -1,4 +1,4 @@
-package ui
+﻿package ui
 
 import (
 	"testing"
@@ -15,7 +15,7 @@ func TestCodeEditorMouseHoverTimer(t *testing.T) {
 
 	const line = 2
 	x := e.gutterTotal() - e.ScrollX + e.xOfCol(line, 6)
-	y := codeTopPad + (float32(line)+0.5)*e.lineH() - e.ScrollY
+	y := e.topPad() + (float32(line)+0.5)*e.lineH() - e.ScrollY
 	e.mouseMoveAt(x, y)
 	if e.hoverKeyNow == "" {
 		t.Fatal("未识别到悬停符号")

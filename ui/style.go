@@ -194,7 +194,10 @@ func (s *Style) TAlign(a Align) *Style { s.TextAlign = a; return s }
 func (s *Style) WrapOn() *Style        { s.Wrap = true; return s }
 
 // CenterYOn 文字在自身高度内垂直居中。
-func (s *Style) CenterYOn() *Style     { s.CenterY = true; return s }
+func (s *Style) CenterYOn() *Style { s.CenterY = true; return s }
+
+// Fade 设置节点自身的不透明度（0~1）：绘制时调制它的背景、描边、阴影与文字/图标
+// 着色（见 fadedPaint），子节点不受影响；<=0 直接不绘制。
 func (s *Style) Fade(v float32) *Style { s.Opacity = v; return s }
 func (s *Style) Clipped() *Style       { s.Clip = true; return s }
 func (s *Style) ScrollY() *Style       { s.Scrollable = true; return s }

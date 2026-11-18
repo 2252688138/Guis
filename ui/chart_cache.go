@@ -195,6 +195,30 @@ func (c *Chart) fingerprint(w, h int) uint64 {
 		for _, v := range s.X {
 			mixf(v)
 		}
+		mixf(float64(len(s.Z)))
+		for _, z := range s.Z {
+			mixf(z)
+		}
+		mixf(float64(len(s.Candles)))
+		for _, k := range s.Candles {
+			mixf(k.Open)
+			mixf(k.High)
+			mixf(k.Low)
+			mixf(k.Close)
+			mixf(k.Volume)
+		}
+	}
+	mixf(float64(c.Bins))
+	mixf(float64(c.Cols))
+	if c.ShowVolume {
+		mixf(1)
+		mixf(float64(c.VolumeRatio))
+	}
+	mixs(c.CandleUp)
+	mixs(c.CandleDown)
+	mixf(float64(len(c.MA)))
+	for _, p := range c.MA {
+		mixf(float64(p))
 	}
 	mixs(curTheme.Name)
 	mixs(ColBgDeep)
@@ -221,8 +245,8 @@ func barRect(c *Chart, lg chartLayout, j, i int) geom.Rect {
 		acc := 0.0
 		for k := 0; k <= j && k < ns; k++ {
 			v := 0.0
-			if i < len(c.Series[k].Values) {
-				v = c.Series[k].Values[i]
+			if vals := c.plotValues(k); i < len(vals) {
+				v = vals[i]
 			}
 			top, bot := lg.mapY(acc), lg.mapY(acc+v)
 			acc += v
@@ -246,11 +270,11 @@ func barRect(c *Chart, lg chartLayout, j, i int) geom.Rect {
 
 	barW := groupW / float32(ns)
 	gap := minf(barW*0.18, 3)
-	s := c.Series[j]
-	if i >= len(s.Values) {
+	vals := c.plotValues(j)
+	if i >= len(vals) {
 		return geom.Rect{}
 	}
-	top, bot := zeroY, lg.mapY(s.Values[i])
+	top, bot := zeroY, lg.mapY(vals[i])
 	if top > bot {
 		top, bot = bot, top
 	}
@@ -270,13 +294,13 @@ func barRect(c *Chart, lg chartLayout, j, i int) geom.Rect {
 // 堆叠的柱状 / 面积在图上画的是「基准 + 本系列值」，
 // 命中与悬浮标点必须用同一个高度，否则会落在两条线之间。
 func (c *Chart) seriesBase(j, i int) float64 {
-	if !c.Stacked || (c.Type != ChartBar && c.Type != ChartArea) {
+	if !c.Stacked || (c.Type != ChartBar && c.Type != ChartArea && c.Type != ChartHistogram) {
 		return 0
 	}
 	base := 0.0
 	for k := 0; k < j && k < len(c.Series); k++ {
-		if i < len(c.Series[k].Values) {
-			base += c.Series[k].Values[i]
+		if vals := c.plotValues(k); i < len(vals) {
+			base += vals[i]
 		}
 	}
 	return base
@@ -286,6 +310,9 @@ func (c *Chart) seriesBase(j, i int) float64 {
 func chartHit(c *Chart, lg chartLayout, mx, my float32) (int, int, bool) {
 	if c == nil {
 		return 0, 0, false
+	}
+	if c.Type == ChartCandle {
+		return candleHit(c, lg, mx, my)
 	}
 	switch c.Type {
 	case ChartPie, ChartDonut:
@@ -377,7 +404,28 @@ func chartHit(c *Chart, lg chartLayout, mx, my float32) (int, int, bool) {
 		}
 		return best, i, true
 
-	case ChartBar:
+	case ChartHeatmap:
+		return heatHit(c, lg, mx, my)
+
+	case ChartFunnel:
+		return funnelHit(c, lg, mx, my)
+
+	case ChartGauge:
+		return 0, 0, false
+
+	case ChartWaterfall:
+		return waterfallHit(c, lg, mx, my)
+
+	case ChartBox:
+		return boxHit(c, lg, mx, my)
+
+	case ChartBarH:
+		return barsHHit(c, lg, mx, my)
+
+	case ChartRose:
+		return roseHit(c, lg, mx, my)
+
+	case ChartBar, ChartHistogram:
 		n := c.points()
 		ns := len(c.Series)
 		if n <= 0 || ns == 0 || !lg.plot.Contains(geom.Point{X: mx, Y: my}) {
@@ -469,7 +517,37 @@ func (a *App) paintChartHover(c *Chart, lg chartLayout, hs, hi int, ok bool) {
 	var anchorX, anchorY float32
 
 	switch c.Type {
-	case ChartBar:
+	case ChartHeatmap:
+		color = c.colorOf(hs)
+		tip = c.tipText(hs, hi)
+		anchorX, anchorY = lg.plot.X+lg.plot.W/2, lg.plot.Y+lg.plot.H/2
+
+	case ChartGauge:
+		return
+
+	case ChartWaterfall:
+		color = c.colorOf(hs)
+		tip = c.waterfallTip(hs, hi)
+		anchorX, anchorY = lg.xAt(hi, c.points()), lg.plot.Y+lg.plot.H*0.3
+
+	case ChartBox:
+		color = c.colorOf(hs)
+		tip = c.boxTip(hs)
+		anchorX, anchorY = lg.xAt(hs, c.points()), lg.plot.Y+lg.plot.H*0.35
+
+	case ChartBarH:
+		r := barHRect(c, lg, hs, hi)
+		if r.H <= 0 {
+			return
+		}
+		if !c.Stacked {
+			a.r.Rect(gpu.Shape{Rect: r, Radius: [4]float32{3, 3, 3, 3}, Fill: gpu.Paint{R: 1, G: 1, B: 1, A: 0.14}})
+		}
+		color = c.colorOf(hs)
+		tip = c.tipText(hs, hi)
+		anchorX, anchorY = r.X+r.W, r.Y+r.H/2
+
+	case ChartBar, ChartHistogram:
 		r := barRect(c, lg, hs, hi)
 		if r.H <= 0 {
 			return
@@ -481,7 +559,20 @@ func (a *App) paintChartHover(c *Chart, lg chartLayout, hs, hi int, ok bool) {
 		tip = c.tipText(hs, hi)
 		anchorX, anchorY = r.X+r.W/2, r.Y
 
-	case ChartLine, ChartArea, ChartScatter:
+	case ChartCandle:
+		k, ok := c.candleOf(hs, hi)
+		if !ok {
+			return
+		}
+		x := lg.xAt(hi, c.points())
+		guide := C(ColText)
+		guide.A = 0.16
+		a.r.Rect(gpu.Shape{Rect: geom.Rect{X: x, Y: lg.plot.Y, W: 1, H: lg.plot.H}, Fill: guide})
+		color = c.candlePaint(k)
+		tip = c.candleTip(hs, hi)
+		anchorX, anchorY = x, lg.mapY(k.Close)
+
+	case ChartLine, ChartArea, ChartTimeshare, ChartScatter, ChartBubble:
 		n := c.points()
 		if hi < 0 || hi >= n {
 			return
@@ -552,11 +643,24 @@ func (c *Chart) tipText(s, i int) string {
 	if s < 0 || s >= len(c.Series) {
 		return ""
 	}
+	if c.Type == ChartBox {
+		return c.boxTip(s)
+	}
+	if c.Type == ChartWaterfall {
+		return c.waterfallTip(s, i)
+	}
 	ser := c.Series[s]
 	var out string
 	var v float64
 
-	if c.Type == ChartPie || c.Type == ChartDonut {
+	if c.Type == ChartHeatmap {
+		v := 0.0
+		if vals := c.plotValues(s); i >= 0 && i < len(vals) {
+			v = vals[i]
+		}
+		return "格子 " + fmtNum(v)
+	}
+	if c.Type == ChartPie || c.Type == ChartDonut || c.Type == ChartRose || c.Type == ChartFunnel {
 		for _, x := range ser.Values {
 			v += x
 		}
@@ -566,11 +670,14 @@ func (c *Chart) tipText(s, i int) string {
 		}
 		out = name
 	} else {
-		if i >= 0 && i < len(c.Labels) && c.Labels[i] != "" {
+		switch {
+		case c.Type == ChartHistogram:
+			out = c.histLabel(i) + " · "
+		case i >= 0 && i < len(c.Labels) && c.Labels[i] != "":
 			out = c.Labels[i] + " · "
 		}
-		if i >= 0 && i < len(ser.Values) {
-			v = ser.Values[i]
+		if vals := c.plotValues(s); i >= 0 && i < len(vals) {
+			v = vals[i]
 		}
 		out += ser.Name
 	}

@@ -298,8 +298,8 @@ func RichEditor(st *RichEditorState, height float32, onChange func()) *Node {
 	}
 	n.OnClick = func() {
 		SetFocus(st.Key)
-		// 点击定位光标：按上一帧行内片段估算
-		x, y := MousePos()
+		// 点击定位光标：按上一帧行内片段估算（用抬起点，不能读实时鼠标位置）
+		x, y := ClickPos()
 		if r, ok := LastFrameOf(st.Key + "-scroll"); ok {
 			lx, ly := x-r.X-12, y-r.Y-12
 			if rt.rich.valid {

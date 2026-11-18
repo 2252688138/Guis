@@ -15,6 +15,7 @@ var (
 	basicRole     = "dev"
 	basicTeam     = "core"
 	basicBio      = "支持换行：第一行\n第二行，Enter 可继续输入，Esc 失焦。"
+	basicAddr     = "折行输入：文本超出框宽时自动换行，框高随行数增长，不再裁掉尾巴。"
 	basicMail     = ""
 	basicMailErr  = ""
 	basicNum      = float64(3)
@@ -163,6 +164,9 @@ func basicInputCard() *ui.Node {
 		ui.FormItemInline("简介", false, "", ui.Textarea("basic-bio", basicBio, "写点介绍…（Enter 换行）", 88, func(v string) {
 			basicBio = v
 		})),
+		ui.FormItemInline("详细地址", false, "", ui.WrapInput("basic-addr", basicAddr, "超宽自动换行…", 0, func(v string) {
+			basicAddr = v
+		})),
 		ui.Divider(),
 		ui.KeyValue("当前选择", roleLabel(basicRole)+" · "+teamLabel(basicTeam)+" · "+
 			strconv.Itoa(int(basicNum))+" 年 · "+orDash(basicDate)),
@@ -187,7 +191,7 @@ func basicMoreInputsCard() *ui.Node {
 			}),
 			ui.Text("空值会提示必填，格式错误会提示格式不正确").St(ui.St().Text(11.5, 400, ui.ColTextMuted)),
 		).St(ui.St().GapOf(10)).AlignTo(ui.AlignCenter)),
-		ui.FormItemInline("搜索", false, "", ui.SearchInput("basic-search", basicSearch, "搜索组件 / 成员…", func(v string) {
+		ui.FormItemInline("搜索", false, "", ui.SearchInputBordered("basic-search", basicSearch, "搜索组件 / 成员…", func(v string) {
 			basicSearch = v
 		})),
 		basicTagsRow(),

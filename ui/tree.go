@@ -5,6 +5,8 @@
 
 package ui
 
+import "time"
+
 // 文件树 / 目录树组件（可展开、可选中、按 Key 记忆展开状态）。
 //
 //	ui.FileTree(nodes, ui.TreeOptions{
@@ -43,6 +45,9 @@ type TreeOptions struct {
 	RowH     float32 // 行高，默认 30
 	OnPick   func(n TreeNode)
 	OnToggle func(n TreeNode, open bool)
+	// OnOpen 双击节点（同一节点 600ms 内二次点击）。配置后双击那一下只触发
+	// OnOpen，不再触发 OnPick / 展开切换，避免「打开」时又插入一次引用。
+	OnOpen func(n TreeNode)
 	// OnContextMenu 鼠标右键点击节点（坐标相对行左上角）：右键菜单用。
 	// 回调触发前会先把该节点设为选中，便于菜单操作定位目标。
 	OnContextMenu func(n TreeNode, x, y float32)
@@ -142,3 +147,34 @@ func TreeSetSelected(key, nodeKey string) {
 	RequestRedraw()
 }
 
+
+// ---- 双击判定 ----
+
+// treeDoubleClickMs 双击判定窗口（毫秒）。取 600 略宽于系统默认 500ms 双击
+// 速度，避免用户手慢一点就判不成双击。
+const treeDoubleClickMs = 600
+
+// treeLastClick 上一次点击的树 / 节点 / 时间，仅用于判定双击，不参与布局。
+var treeLastClick struct {
+	tree, node string
+	at         time.Time
+}
+
+// treeIsDoubleClick 本次点击是否构成双击（同一棵树、同一节点、间隔在窗口内）。
+// 命中后清空记账，避免三连击被当成第二次双击。
+func treeIsDoubleClick(tree, node string) bool {
+	now := time.Now()
+	hit := treeLastClick.tree == tree && treeLastClick.node == node &&
+		now.Sub(treeLastClick.at) <= treeDoubleClickMs*time.Millisecond
+	if hit {
+		treeLastClick.tree, treeLastClick.node, treeLastClick.at = "", "", time.Time{}
+		return true
+	}
+	treeLastClick.tree, treeLastClick.node, treeLastClick.at = tree, node, now
+	return false
+}
+
+// treeResetClickState 清空双击记账（测试用）。
+func treeResetClickState() {
+	treeLastClick.tree, treeLastClick.node, treeLastClick.at = "", "", time.Time{}
+}

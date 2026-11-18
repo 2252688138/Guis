@@ -8,11 +8,16 @@ ui.Input("name", name, "请输入姓名", func(v string) { name = v })
 ui.InputSubmit("search", q, "搜索后回车", func(v string) { q = v }, func() { doSearch(q) })
 ui.PasswordInput("pwd", pwd, "密码", func(v string) { pwd = v })
 ui.NumberInput("count", 1, 1, 99, 1, func(v float64) { count = v })   // 带 +/- 步进
-ui.SearchInput("q", q, "搜索", func(v string) { q = v })              // 放大镜 + 清除按钮
+ui.SearchInput("q", q, "搜索", func(v string) { q = v })              // 放大镜 + 清除按钮，默认无边框
+ui.SearchInputH("q2", q, "搜索", 32, setQ)                           // 指定高度的无边框搜索框
+ui.SearchInputBordered("q3", q, "搜索", setQ)                        // 需要明确输入边界时用带描边版
+ui.InputFlat("inline", v, "行内编辑", setV)                          // 无边框单行输入（工具栏 / 列表行）
 ui.Textarea("note", note, "多行备注", 120, func(v string) { note = v })
 ```
 
 * `Key` 必须唯一，否则多个输入框共享光标 / 选区。
+* 搜索框与 `InputFlat` 默认**不画边框**（透明底，聚焦时只有极淡填充），放在自带底板的
+  容器里即可；表单 / 浮层里需要明确边界改用 `SearchInputBordered`（`Input` 本身就是带边框版）。
 * 输入框内部已注册 `RegisterTextEdit`，Ctrl+A/C/X/V 开箱可用（见《21 文本编辑》）。
 * `InputSubmit` 的回车提交适合地址栏、搜索框。
 

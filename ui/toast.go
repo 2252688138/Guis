@@ -105,5 +105,12 @@ func ToastLayer() *Node {
 	if n == nil {
 		return nil
 	}
-	return n.St(St().Fade(0.2+0.8*t).Translate(0, dy))
+	n = n.St(St().Fade(0.2+0.8*t).Translate(0, dy)).
+		K("toast-layer").
+		Anim(PopIn(0.2).At(0.94))
+	// 新的提示（上一条已消失）要重新播入场动画
+	if animOnOpen("toast-layer", live) {
+		n.Replay()
+	}
+	return n
 }

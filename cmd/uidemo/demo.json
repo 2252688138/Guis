@@ -1,0 +1,127 @@
+{
+  "type": "col",
+  "gap": 14,
+  "children": [
+    {
+      "type": "text",
+      "text": "改这个文件，界面立刻变",
+      "size": 22,
+      "weight": 700,
+      "color": "#e6edf7"
+    },
+    {
+      "type": "text",
+      "text": "这个界面完全由 demo.json 描述：文字、颜色、间距、结构随你改，保存后窗口不动就能看到结果。按钮的行为仍然写在 Go 里。",
+      "size": 13,
+      "color": "#8b97ab"
+    },
+    {
+      "type": "row",
+      "gap": 10,
+      "children": [
+        {
+          "type": "button",
+          "text": "点我（Go 回调）",
+          "key": "btn-hi",
+          "onClick": "say-hi"
+        },
+        {
+          "type": "button",
+          "text": "换主题色",
+          "key": "btn-accent",
+          "onClick": "accent"
+        },
+        {
+          "type": "button",
+          "text": "手动重载",
+          "key": "btn-reload",
+          "onClick": "reload"
+        }
+      ]
+    },
+    {
+      "type": "box",
+      "pad": 16,
+      "r": 12,
+      "bg": "#151f33",
+      "gap": 8,
+      "children": [
+        {
+          "type": "text",
+          "text": "卡片 = box + bg + r + pad",
+          "size": 14,
+          "weight": 600,
+          "color": "#cfd8e6"
+        },
+        {
+          "type": "text",
+          "text": "所有样式字段都对应 ui.St() 的同名方法（w/h/pad/gap/bg/r/stroke/shadow/size/color/align…）。",
+          "size": 12,
+          "color": "#8b97ab"
+        }
+      ]
+    },
+    {
+      "type": "grid",
+      "cols": 3,
+      "gap": 10,
+      "children": [
+        {
+          "type": "box",
+          "pad": 14,
+          "bg": "#141b2b",
+          "r": 10,
+          "children": [
+            { "type": "text", "text": "网格 1", "size": 13, "color": "#cfd8e6" }
+          ]
+        },
+        {
+          "type": "box",
+          "pad": 14,
+          "bg": "#141b2b",
+          "r": 10,
+          "children": [
+            { "type": "text", "text": "网格 2", "size": 13, "color": "#cfd8e6" }
+          ]
+        },
+        {
+          "type": "box",
+          "pad": 14,
+          "bg": "#141b2b",
+          "r": 10,
+          "children": [
+            { "type": "text", "text": "网格 3", "size": 13, "color": "#cfd8e6" }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "gap": 8,
+      "children": [
+        { "type": "icon", "icon": "star", "size": 18, "color": "#f5c451" },
+        { "type": "text", "text": "图标也用名字引用内置图标集", "size": 13, "color": "#8b97ab" }
+      ]
+    },
+    {
+      "type": "scroll",
+      "key": "list",
+      "grow": 1,
+      "gap": 6,
+      "children": [
+        { "type": "text", "text": "01 · 滚动区域里的第一项", "size": 13, "color": "#cfd8e6" },
+        { "type": "text", "text": "02 · 第二项", "size": 13, "color": "#cfd8e6" },
+        { "type": "text", "text": "03 · 第三项", "size": 13, "color": "#cfd8e6" },
+        { "type": "text", "text": "04 · 第四项", "size": 13, "color": "#cfd8e6" },
+        { "type": "text", "text": "05 · 第五项", "size": 13, "color": "#cfd8e6" },
+        { "type": "text", "text": "06 · 第六项", "size": 13, "color": "#cfd8e6" },
+        { "type": "text", "text": "07 · 第七项", "size": 13, "color": "#cfd8e6" },
+        { "type": "text", "text": "08 · 第八项", "size": 13, "color": "#cfd8e6" },
+        { "type": "text", "text": "09 · 第九项", "size": 13, "color": "#cfd8e6" },
+        { "type": "text", "text": "10 · 第十项", "size": 13, "color": "#cfd8e6" },
+        { "type": "text", "text": "11 · 第十一项", "size": 13, "color": "#cfd8e6" },
+        { "type": "text", "text": "12 · 第十二项", "size": 13, "color": "#cfd8e6" }
+      ]
+    }
+  ]
+}

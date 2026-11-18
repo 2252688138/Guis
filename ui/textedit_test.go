@@ -66,6 +66,8 @@ func TestInputDragSelect(t *testing.T) {
 	// 模拟按下：命中测试必须返回输入框本身（否则 dragKey 建不起来）
 	// 按下点取文本左边缘（输入框内边距 12），锚点落在 0
 	a.mouseX, a.mouseY = in.Frame.X+12, in.Frame.Y+in.Frame.H/2
+	// 按下回调按「按下点」定位光标（PressPos），这里同步模拟一次按下
+	a.pressX, a.pressY = a.mouseX, a.mouseY
 	press := hitInteractive(root, a.mouseX, a.mouseY, 0, a)
 	if press == nil || press.Key != "t-drag" {
 		t.Fatalf("按下应命中输入框，实际 %+v", press)

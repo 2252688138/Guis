@@ -90,19 +90,19 @@ type CodeTheme struct {
 // DarkCodeTheme 深色配色（默认）。
 func DarkCodeTheme() CodeTheme {
 	return CodeTheme{
-		Bg:          C("#0d1117"),
-		GutterBg:    C("#0b0f16"),
-		GutterText:  C("#4b5563"),
+		Bg:           C("#0d1117"),
+		GutterBg:     C("#0b0f16"),
+		GutterText:   C("#4b5563"),
 		GutterActive: C("#c9d1d9"),
-		CurrentLine: C("rgba(110,130,180,0.10)"),
-		Selection:   C("rgba(58,110,196,0.42)"),
+		CurrentLine:  C("rgba(110,130,180,0.10)"),
+		Selection:    C("rgba(58,110,196,0.42)"),
 		Caret:        C("#e6edf3"),
 		Text:         C("#c9d1d9"),
-		IndentGuide: C("rgba(255,255,255,0.07)"),
-		Scrollbar:   C("rgba(255,255,255,0.18)"),
-		MinimapBg:   C("#0a0e14"),
-		MinimapView: C("rgba(255,255,255,0.10)"),
-		MinimapLine: C("rgba(160,180,210,0.55)"),
+		IndentGuide:  C("rgba(255,255,255,0.07)"),
+		Scrollbar:    C("rgba(255,255,255,0.18)"),
+		MinimapBg:    C("#0a0e14"),
+		MinimapView:  C("rgba(255,255,255,0.10)"),
+		MinimapLine:  C("rgba(160,180,210,0.55)"),
 
 		Keyword:   C("#ff7b72"),
 		Type:      C("#79c0ff"),
@@ -173,13 +173,13 @@ type CodeCompletion struct {
 
 // codeDelta 一次原子编辑（撤销 / 重做都按它反向或正向套用）。
 type codeDelta struct {
-	Start       int // 受影响的首行
-	Before      []string
-	After       []string
-	PosBefore   CodePos
+	Start        int // 受影响的首行
+	Before       []string
+	After        []string
+	PosBefore    CodePos
 	AnchorBefore CodePos
-	PosAfter    CodePos
-	AnchorAfter CodePos
+	PosAfter     CodePos
+	AnchorAfter  CodePos
 }
 
 // CodeEditorState 代码编辑器状态（跨帧保持；由 CodeEditor 构建成节点）。
@@ -197,15 +197,15 @@ type CodeEditorState struct {
 	FontFamily       string
 	TabSize          int
 
-	Theme                    CodeTheme
-	MinW, MinH               float32
-	ShowGutter               bool
-	ShowMinimap              bool
-	ShowCurrentLine          bool
-	ShowIndentGuide          bool
-	MinimapW                 float32
-	ReadOnly                 bool
-	Dirty                    bool
+	Theme           CodeTheme
+	MinW, MinH      float32
+	ShowGutter      bool
+	ShowMinimap     bool
+	ShowCurrentLine bool
+	ShowIndentGuide bool
+	MinimapW        float32
+	ReadOnly        bool
+	Dirty           bool
 
 	// ---- 身份 / 回调 ----
 	Key      string
@@ -217,6 +217,9 @@ type CodeEditorState struct {
 	OnCaret  func(line, col int)
 	OnSave   func(text string)
 	OnStatus func(msg string)
+	// OnTranslate 异步翻译钩子：悬停说明与诊断消息先显示原文，done(译文)
+	// 返回后用译文重排；done 传空串表示不翻译。nil 时完全不做翻译。
+	OnTranslate func(text string, done func(string))
 
 	// ---- 内部 ----
 	undo, redo []codeDelta
@@ -228,6 +231,12 @@ type CodeEditorState struct {
 	menuOpen     bool
 	menuX, menuY float32
 	menuSel      int
+	// hoverRaw 当前悬停原文 / transCache 译文缓存（悬停与诊断共用，
+	// diagRaw 为最近一次诊断原文，diagInFlight 记录在途请求避免重复）。
+	hoverRaw     string
+	transCache   map[string]string
+	diagRaw      []CodeDiagnostic
+	diagInFlight map[string]bool
 	findOpen     bool
 	findMode     int // 0 = 查找，1 = 转到行，2 = 重命名
 	findText     string
@@ -235,9 +244,9 @@ type CodeEditorState struct {
 	findAt       int
 	lastSync     time.Time
 
-	compOpen   bool
-	compItems  []CodeCompletion
-	compSel    int
+	compOpen     bool
+	compItems    []CodeCompletion
+	compSel      int
 	compX, compY float32
 	// renameWord 重命名输入条打开时的原符号名
 	renameWord string
@@ -285,6 +294,18 @@ type CodeEditorState struct {
 	findCaret    int
 	replaceCaret int
 	findSelAll   bool
+
+	// ---- 查找增强（codeeditor_find_regex.go）----
+	// FindRegex 查找串按正则解释（替换支持 $1 捕获组）。
+	FindRegex bool
+	// FindInSel 只在当前选区内查找 / 替换。
+	FindInSel   bool
+	findHistory []string
+	findHistIdx int
+	fhSeq       uint64
+	fhKey       string
+	fhHits      []codeFindHit
+	fhReady     bool
 	// semantic LSP 语义高亮片段（行 → 片段）；semanticOn 是否启用。
 	semantic      map[int][]codeSpan
 	semanticOn    bool
@@ -298,9 +319,9 @@ type CodeEditorState struct {
 	// quiet 批量编辑期间跳过逐次 OnChange / LSP 同步（多光标只通知一次）。
 	quiet bool
 
-	hoverText  string
+	hoverText      string
 	hoverX, hoverY float32
-	hoverOpen  bool
+	hoverOpen      bool
 	// ---- 鼠标悬停语法提示 ----
 	// hoverKeyNow 鼠标当前所在符号（行:列:词），用于去重与判断是否仍停在同一个词上。
 	hoverKeyNow string
@@ -316,17 +337,49 @@ type CodeEditorState struct {
 	builtinDiags []CodeDiagnostic
 	lspStatus    string
 	// lspLog 服务端日志（单行化，最多保留 codeLSPLogMax 条；不写状态栏，状态栏只放一行摘要）。
-	lspLog []string
-	srv       *LSPClient
+	lspLog     []string
+	srv        *LSPClient
 	hoverLines []string
 	// hoverKinds 与 hoverLines 等长：每行的排版类型（代码 / 标题 / 列表 / 虚线）。
 	hoverKinds []codeHoverKind
 
 	lastClick     time.Time
 	lastClickLine int
-	autoPairs     bool
 	changeSeq     uint64
 	searchSeq     int
+
+	// ---- 编辑体验开关（实现见 codeeditor_edit.go）----
+	// AutoPair 输入左符号时自动补右符号（默认开；关掉后输入行为与旧版一致）。
+	AutoPair bool
+	// AutoIndentPaste 多行粘贴自动跟随当前行缩进（默认开）。
+	AutoIndentPaste bool
+	// BracketMatchHL 光标处括号与配对括号高亮（默认开）。
+	BracketMatchHL bool
+	// ShowBreadcrumb 顶部面包屑（文件 › 类型 › 函数），默认开。
+	ShowBreadcrumb bool
+	// MinFontSize / MaxFontSize 字号缩放范围（0 表示默认 8 / 40）。
+	MinFontSize, MaxFontSize float32
+	// LongLineLimit 单行 rune 数超过此值时跳过着色与括号匹配（只画纯文本），
+	// 默认 4096；0 表示用默认值，负数表示不限制。
+	LongLineLimit int
+
+	// ---- 括号匹配高亮缓存（文本 / 光标不变时复用，避免每帧扫描）----
+	bmSeq           uint64
+	bmPos, bmAnchor CodePos
+	bmReady         bool
+	bmA, bmB        CodePos
+	bmOK            bool
+
+	// ---- 结构导航（codeeditor_outline.go）----
+	outlineOpen   bool
+	outlineSel    int
+	outlineFilter string
+	symLang       string
+	symSeq        uint64
+	symReady      bool
+	symbols       []CodeSymbol
+	bookmarks     map[int]bool
+	bcSpans       []codeCrumbSpan
 }
 
 // NewCodeEditorState 新建编辑器状态（key 必须全局唯一：同一时间只有一个编辑器持有焦点）。
@@ -344,7 +397,13 @@ func NewCodeEditorState(key, text string) *CodeEditorState {
 		ShowCurrentLine: true,
 		ShowIndentGuide: true,
 		MinimapW:        codeMinimapDefaultW,
-		autoPairs:       true,
+		AutoPair:        true,
+		AutoIndentPaste: true,
+		BracketMatchHL:  true,
+		ShowBreadcrumb:  true,
+		MinFontSize:     8,
+		MaxFontSize:     40,
+		LongLineLimit:   codeLongLineLimit,
 		Language:        "plain",
 		cache:           newCodeCache(),
 	}
@@ -721,6 +780,10 @@ func (e *CodeEditorState) DeleteBack() bool {
 		e.replaceRange(r.Start, r.End, "", true)
 		return true
 	}
+	// 自动闭合产生的空配对（() / [] / {} / ""），一次退格删掉两侧
+	if e.AutoPair && e.deletePairBack() {
+		return true
+	}
 	p := e.Pos
 	if p.Col == 0 {
 		if p.Line == 0 {
@@ -1027,7 +1090,7 @@ func (e *CodeEditorState) MoveWord(dir int, extend bool) {
 
 // PageMove 翻页（PageUp / PageDown）。
 func (e *CodeEditorState) PageMove(dir int, extend bool) {
-	rows := int(e.viewH / e.lineH()) - 2
+	rows := int(e.viewH/e.lineH()) - 2
 	if rows < 3 {
 		rows = 10
 	}
@@ -1082,6 +1145,9 @@ func (e *CodeEditorState) Paste() bool {
 	s := ClipboardText()
 	if s == "" {
 		return false
+	}
+	if e.AutoIndentPaste {
+		s = e.pasteIndented(s)
 	}
 	e.InsertText(s)
 	return true
@@ -1187,6 +1253,13 @@ func (e *CodeEditorState) ToggleComment() {
 func (e *CodeEditorState) Find(text string, forward bool) bool {
 	if text == "" {
 		return false
+	}
+	// 正则 / 选区内查找走统一命中集（含回绕与跨行跳转）
+	if e.FindRegex || e.FindInSel {
+		if e.findText != text {
+			e.findText = text
+		}
+		return e.findRegexJump(forward)
 	}
 	cmp := func(s string) string {
 		if e.findCase {
@@ -1385,6 +1458,33 @@ func (e *CodeEditorState) HandleKey(vk uint32) bool {
 		}
 	}
 
+	// 符号大纲打开：↑↓ 选择、Enter 跳转、Esc 关闭，其余编辑键不下发
+	if e.outlineOpen {
+		switch vk {
+		case VK_ESCAPE:
+			e.CloseOutline()
+			return true
+		case 0x26: // ↑
+			e.outlineMove(-1)
+			return true
+		case 0x28, VK_TAB: // ↓ / Tab
+			e.outlineMove(1)
+			return true
+		case VK_RETURN:
+			e.AcceptOutline()
+			return true
+		case VK_BACK:
+			if e.outlineFilter != "" {
+				rs := []rune(e.outlineFilter)
+				e.outlineFilter = string(rs[:len(rs)-1])
+				e.outlineSel = 0
+				RequestRedraw()
+			}
+			return true
+		}
+		return true
+	}
+
 	// 查找 / 替换 / 转到行 / 重命名输入框打开
 	if e.findOpen {
 		switch vk {
@@ -1419,12 +1519,20 @@ func (e *CodeEditorState) HandleKey(vk uint32) bool {
 		case 0x2E: // Delete
 			e.FindDelete()
 			return true
-		case 0x26: // ↑ 上一个命中
+		case 0x26: // ↑ 上一个命中；Alt+↑ 翻搜索历史
+			if alt {
+				e.FindHistoryMove(-1)
+				return true
+			}
 			if e.findMode == 0 || e.findMode == 3 {
 				e.Find(e.findText, false)
 			}
 			return true
-		case 0x28: // ↓ 下一个命中
+		case 0x28: // ↓ 下一个命中；Alt+↓ 翻搜索历史
+			if alt {
+				e.FindHistoryMove(1)
+				return true
+			}
 			if e.findMode == 0 || e.findMode == 3 {
 				e.Find(e.findText, true)
 			}
@@ -1465,6 +1573,13 @@ func (e *CodeEditorState) HandleKey(vk uint32) bool {
 			switch vk {
 			case 'A', 'a':
 				e.FindSelectAll()
+				return true
+			case 'L', 'l': // Ctrl+Shift+L：全部匹配转多光标
+				if n := e.SelectAllMatches(); n > 0 {
+					e.status("多光标：" + codeItoa(n) + " 处匹配")
+				} else {
+					e.status("没有匹配项")
+				}
 				return true
 			case 'V', 'v':
 				e.FindPaste()
@@ -1528,6 +1643,12 @@ func (e *CodeEditorState) HandleKey(vk uint32) bool {
 		case VK_SPACE:
 			e.RequestCompletion()
 			return true
+		case '=', 0xBB, '+': // Ctrl+= / Ctrl++ 放大字号
+			e.ZoomFont(1)
+			return true
+		case '-', 0xBD: // Ctrl+- 缩小字号
+			e.ZoomFont(-1)
+			return true
 		case '/', 0xBF, 0xE2: // Ctrl+/（不同键盘布局的斜杠键码）
 			e.ToggleComment()
 			return true
@@ -1542,6 +1663,15 @@ func (e *CodeEditorState) HandleKey(vk uint32) bool {
 			// Windows 下 Ctrl+H 发的是 VK_BACK（0x08，等同 Ctrl+Backspace），
 			// 两个键码都要接，否则按 Ctrl+H 会变成删一个字符。
 			e.OpenReplace()
+			return true
+		case 'O', 'o': // Ctrl+Shift+O 符号大纲
+			if shift {
+				e.ToggleOutline()
+				return true
+			}
+			return false
+		case 0x71: // Ctrl+F2 切换书签
+			e.ToggleBookmark()
 			return true
 		case 'M', 'm':
 			if shift {
@@ -1585,6 +1715,13 @@ func (e *CodeEditorState) HandleKey(vk uint32) bool {
 		case 'Z', 'z': // Alt+Z 软换行
 			e.SetWrap(!e.Wrap)
 			e.status(map[bool]string{true: "软换行：开", false: "软换行：关"}[e.Wrap])
+			return true
+		case 0x71: // Alt+F2 / Shift+Alt+F2 下一个 / 上一个书签
+			if shift {
+				e.NextBookmark(-1)
+			} else {
+				e.NextBookmark(1)
+			}
 			return true
 		}
 	}
@@ -1684,6 +1821,15 @@ func (e *CodeEditorState) HandleChar(r rune) {
 		e.appendFindRune(r)
 		return
 	}
+	if e.outlineOpen {
+		if r == '\n' || r == '\r' || r == 0x7f || r == '\b' {
+			return
+		}
+		e.outlineFilter += string(r)
+		e.outlineSel = 0
+		RequestRedraw()
+		return
+	}
 	// 悬停信息 / 问题面板在任何输入下自动关闭
 	e.hoverOpen = false
 	e.hoverPinned = false
@@ -1697,8 +1843,17 @@ func (e *CodeEditorState) HandleChar(r rune) {
 	if e.ReadOnly {
 		return
 	}
-	// 自动配对：输入 ) ] } " ' 时若右边正是同一字符则只移动光标
-	if e.autoPairs && (r == ')' || r == ']' || r == '}' || r == '"' || r == '\'') {
+	// 编辑体验：左符号自动补右符号（有选区时包裹选区）；右符号已存在时只跳过
+	if e.AutoPair && codeCloserOf(r) != 0 {
+		if e.AutoClosePair(r) {
+			if e.compOpen {
+				e.filterCompletion()
+			}
+			e.lspTrigger(r, e.Pos)
+			return
+		}
+	}
+	if e.AutoPair && (r == ')' || r == ']' || r == '}' || r == '"' || r == '\'') {
 		cur := []rune(e.line(e.Pos.Line))
 		if e.Pos.Col < len(cur) && cur[e.Pos.Col] == r {
 			if _, has := e.Selection(); !has {
@@ -2123,6 +2278,9 @@ func CodeEditor(st *CodeEditorState) *Node {
 			RequestRedraw()
 			return
 		}
+		if e.outlineOpen && e.OutlinePanelClick(x, y) {
+			return
+		}
 		if e.findOpen && e.FindPanelClick(x, y) {
 			return
 		}
@@ -2143,16 +2301,21 @@ func CodeEditor(st *CodeEditorState) *Node {
 		}
 		e.hoverLeave()
 		e.hoverOpen = false
+		// 面包屑点击：回到上级符号所在行
+		if e.BreadcrumbClick(x, y) {
+			RequestRedraw()
+			return
+		}
 		switch zone := e.hitZone(x, y); zone {
 		case codeHitFoldMark:
-			row := int((y - codeTopPad + e.ScrollY) / e.lineH())
+			row := int((y - e.topPad() + e.ScrollY) / e.lineH())
 			line, _ := e.lineOfRow(row)
 			e.ToggleFold(line)
 		case codeHitScrollV, codeHitScrollH, codeHitMinimap:
 			// 单击轨道 / 小地图直接跳转（按住拖动在 OnDrag 里连续生效）
 			e.startDrag(zone, x, y)
 		case codeHitGutter:
-			row := int((y - codeTopPad + e.ScrollY) / e.lineH())
+			row := int((y - e.topPad() + e.ScrollY) / e.lineH())
 			line, _ := e.lineOfRow(row)
 			e.ClearCursors()
 			e.SelectLine(line)
@@ -2173,6 +2336,15 @@ func CodeEditor(st *CodeEditorState) *Node {
 		e.openMenu(x, y)
 	}
 	n.OnScroll = func(dy float32) {
+		// Ctrl+滚轮缩放字号（向上滚放大），与主流编辑器一致
+		if CtrlDown() {
+			if dy < 0 {
+				e.ZoomFont(1)
+			} else if dy > 0 {
+				e.ZoomFont(-1)
+			}
+			return
+		}
 		if e.menuOpen {
 			e.menuOpen = false
 		}

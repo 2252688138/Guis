@@ -31,6 +31,7 @@ type chartLayout struct {
 	pieC  fpt     // 饼/环/雷达圆心
 	pieR  float32 // 半径
 	donut float32 // 环形内径比例
+	volPlot geom.Rect // K 线量能副图区（ShowVolume 时有效）
 }
 
 // chartMetrics 图表的字体与尺寸常量（统一一处方便调）。
@@ -61,7 +62,7 @@ func (c *Chart) layout(a *App, r geom.Rect, scale float32) chartLayout {
 	}
 
 	switch c.Type {
-	case ChartPie, ChartDonut, ChartRadar:
+	case ChartPie, ChartDonut, ChartRadar, ChartRose, ChartGauge:
 		side := minf(inner.W, inner.H)
 		lg.pieC = fpt{inner.X + inner.W/2, inner.Y + inner.H/2}
 		lg.pieR = side/2 - 2
@@ -82,6 +83,18 @@ func (c *Chart) layout(a *App, r geom.Rect, scale float32) chartLayout {
 	lo, hi := c.axisRange()
 	lg.yMin, lg.yMax = lo, hi
 	lg.yTicks = c.tickValues(lg.yMin, lg.yMax)
+	if c.Type == ChartCandle && c.Min == 0 && c.Max == 0 {
+		// 自动模式下改用整步长刻度，避免 97.2 这种零碎值
+		lg.yTicks = c.candleTicks(lg.yMin, lg.yMax)
+	}
+	if c.Type == ChartBarH {
+		// 水平条形：类目名占左侧、数值刻度在底部
+		lg.plot = barsHPlot(a, c, inner)
+		if lg.plot.W < 2 || lg.plot.H < 2 {
+			lg.plot = geom.Rect{X: r.X, Y: r.Y, W: r.W, H: r.H}
+		}
+		return lg
+	}
 	yLabelW := float32(0)
 	if c.ShowAxis && f != nil {
 		for _, v := range lg.yTicks {
@@ -92,7 +105,7 @@ func (c *Chart) layout(a *App, r geom.Rect, scale float32) chartLayout {
 		yLabelW += 10
 	}
 	xLabelH := float32(0)
-	if len(c.Labels) > 0 && f != nil {
+	if (len(c.Labels) > 0 || c.Type == ChartHistogram) && f != nil {
 		xLabelH = f.LineHeight + 8
 	}
 	lg.plot = geom.Rect{
@@ -104,6 +117,18 @@ func (c *Chart) layout(a *App, r geom.Rect, scale float32) chartLayout {
 	if lg.plot.W < 2 || lg.plot.H < 2 {
 		lg.plot = geom.Rect{X: r.X, Y: r.Y, W: r.W, H: r.H}
 	}
+	if c.Type == ChartCandle && c.ShowVolume && lg.plot.H > 60 {
+		// 量能副图：底部切一块，主图与量能之间留 10px 间距
+		ratio := c.VolumeRatio
+		if ratio <= 0 || ratio > 0.6 {
+			ratio = 0.24
+		}
+		gapH := float32(10)
+		volH := (lg.plot.H - gapH) * ratio
+		mainH := lg.plot.H - gapH - volH
+		lg.volPlot = geom.Rect{X: lg.plot.X, Y: lg.plot.Y + mainH + gapH, W: lg.plot.W, H: volH}
+		lg.plot.H = mainH
+	}
 	return lg
 }
 
@@ -112,7 +137,7 @@ func (c *Chart) legendVisible() bool {
 	if !c.ShowLegend {
 		return false
 	}
-	if c.Type == ChartPie || c.Type == ChartDonut {
+	if c.Type == ChartPie || c.Type == ChartDonut || c.Type == ChartRose {
 		return len(c.Series) > 0
 	}
 	return len(c.Series) > 1
@@ -120,6 +145,150 @@ func (c *Chart) legendVisible() bool {
 
 // axisRange 纵轴范围。
 func (c *Chart) axisRange() (float64, float64) {
+	if c.Type == ChartCandle {
+		return c.candleRange()
+	}
+	if c.Type == ChartHistogram {
+		c.updateHistogram()
+		mx := 0.0
+		for _, row := range c.histCounts {
+			for _, v := range row {
+				if v > mx {
+					mx = v
+				}
+			}
+		}
+		hi := c.Max
+		if hi <= 0 {
+			hi = niceMax(mx, c.YTicks)
+		}
+		if hi <= 0 {
+			hi = 1
+		}
+		return c.Min, hi
+	}
+	if c.Type == ChartGauge {
+		// 仪表盘：量程由 Min / Max 指定，默认 0~100
+		lo, hi := c.Min, c.Max
+		if hi <= lo {
+			lo, hi = 0, 100
+		}
+		return lo, hi
+	}
+	if c.Type == ChartHeatmap || c.Type == ChartFunnel {
+		// 不做数值轴，值域只用于内部归一化
+		mx := 0.0
+		for _, s := range c.Series {
+			sum := 0.0
+			for _, v := range s.Values {
+				if v > 0 {
+					sum += v
+				}
+			}
+			if sum > mx {
+				mx = sum
+			}
+		}
+		if c.Max > mx {
+			mx = c.Max
+		}
+		if mx <= 0 {
+			mx = 1
+		}
+		return 0, mx
+	}
+	if c.Type == ChartTimeshare {
+		// 分时图：以基准线为中心对称，上下留 10%
+		base := c.Min
+		dev := 0.0
+		for _, s := range c.Series {
+			for _, v := range s.Values {
+				if d := math.Abs(v - base); d > dev {
+					dev = d
+				}
+			}
+		}
+		if dev <= 0 {
+			dev = math.Abs(base) * 0.02
+		}
+		if dev <= 0 {
+			dev = 1
+		}
+		dev *= 1.1
+		lo, hi := base-dev, base+dev
+		if c.Max > 0 {
+			hi = c.Max
+		}
+		return lo, hi
+	}
+	if c.Type == ChartWaterfall {
+		// 瀑希图：值域要包住累计路径的全部顶点
+		base := c.waterfallBase()
+		lo, hi := base, base
+		for _, s := range c.Series {
+			acc := base
+			for _, v := range s.Values {
+				acc += v
+				if acc < lo {
+					lo = acc
+				}
+				if acc > hi {
+					hi = acc
+				}
+			}
+		}
+		pad := (hi - lo) * 0.08
+		if pad <= 0 {
+			pad = 1
+		}
+		lo -= pad
+		hi += pad
+		if c.Max > 0 {
+			hi = c.Max
+		}
+		return lo, hi
+	}
+	if c.Type == ChartBox {
+		// 箱线图：覆盖所有箱的 min / max
+		lo, hi := math.Inf(1), math.Inf(-1)
+		for j := range c.Series {
+			if st, ok := c.boxStats(j); ok {
+				lo = math.Min(lo, st.min)
+				hi = math.Max(hi, st.max)
+			}
+		}
+		if math.IsInf(lo, 1) || math.IsInf(hi, -1) {
+			return c.Min, math.Max(c.Max, 1)
+		}
+		pad := (hi - lo) * 0.08
+		if pad <= 0 {
+			pad = 1
+		}
+		lo -= pad
+		hi += pad
+		if c.Min != 0 {
+			lo = c.Min
+		}
+		if c.Max > 0 {
+			hi = c.Max
+		}
+		return lo, hi
+	}
+	if c.Type == ChartBarH {
+		// 水平条形：值域必须含 0 基准线，负值向下扩展
+		lo, hi := c.Min, c.Max
+		mn, mx := c.dataMin(), c.dataMax()
+		if lo == 0 && mn < 0 {
+			lo = -niceMax(-mn, c.YTicks)
+		}
+		if hi <= 0 {
+			hi = niceMax(mx, c.YTicks)
+		}
+		if hi <= lo {
+			hi = lo + 1
+		}
+		return lo, hi
+	}
 	lo := c.Min
 	hi := c.Max
 	if hi <= 0 {
@@ -176,7 +345,8 @@ func (lg *chartLayout) bandW(n int) float32 {
 
 // paintChart 绘制图表节点。
 func (a *App) paintChart(n *Node, r geom.Rect) {
-	c := n.Chart
+	// 交互状态（缩放窗口 / 图例隐藏）用浅拷贝表达：无状态时原对象直通
+	c := chartEffective(n)
 	if c == nil {
 		return
 	}
@@ -196,8 +366,20 @@ func (a *App) paintChart(n *Node, r geom.Rect) {
 	a.paintChartGrid(c, lg)
 
 	// 2. 柱状图（原生圆角矩形，零纹理内存）
-	if c.Type == ChartBar {
+	if c.Type == ChartBar || c.Type == ChartHistogram {
 		a.paintChartBars(c, lg)
+	} else if c.Type == ChartBarH {
+		a.paintChartBarsH(c, lg)
+	} else if c.Type == ChartWaterfall {
+		a.paintChartWaterfall(c, lg)
+	} else if c.Type == ChartBox {
+		a.paintChartBox(c, lg)
+	} else if c.Type == ChartHeatmap {
+		a.paintChartHeatmap(c, lg)
+	} else if c.Type == ChartCandle {
+		a.paintChartCandles(c, lg)
+		a.paintCandleMALegend(c, lg)
+		a.paintChartVolume(c, lg)
 	}
 
 	// 3. 需要曲线的类型：一张缓存纹理
@@ -211,6 +393,15 @@ func (a *App) paintChart(n *Node, r geom.Rect) {
 	hs, hi, hov := a.chartHover(c, lg, r)
 	a.paintChartHover(c, lg, hs, hi, hov)
 
+	// 4.5 十字光标 + 交互上下文（图例命中区在 paintChartText 里记录）
+	if n.Chart != nil && n.Chart.Interactive {
+		a.curChartKey = n.Key
+		a.chartCrosshair(c, lg)
+	} else {
+		a.curChartKey = ""
+	}
+
+
 	// 5. 文字：刻度 / 标签 / 图例 / 标题
 	a.paintChartText(c, lg)
 }
@@ -218,7 +409,13 @@ func (a *App) paintChart(n *Node, r geom.Rect) {
 // needsTexture 该类型是否需要矢量纹理。
 func (c *Chart) needsTexture() bool {
 	switch c.Type {
-	case ChartLine, ChartArea, ChartPie, ChartDonut, ChartRadar, ChartScatter:
+	case ChartLine, ChartArea, ChartTimeshare, ChartPie, ChartDonut, ChartRadar, ChartScatter:
+		return true
+	case ChartCandle:
+		// 蜡烛是原生图元，只有叠了均线才需要光栅纹理
+		return len(c.MA) > 0
+	case ChartRose, ChartBubble, ChartFunnel, ChartGauge:
+		// 弧线 / 多边形必须走光栅
 		return true
 	}
 	return false
@@ -287,11 +484,11 @@ func (a *App) paintChartBars(c *Chart, lg chartLayout) {
 		cx := lg.xAt(i, n)
 		stackAcc := 0.0
 		for j := 0; j < ns; j++ {
-			s := c.Series[j]
-			if i >= len(s.Values) {
+			vals := c.plotValues(j)
+			if i >= len(vals) {
 				continue
 			}
-			v := s.Values[i]
+			v := vals[i]
 			p := c.colorOf(j)
 			var y0, y1 float32
 			var x0, w float32
@@ -308,6 +505,13 @@ func (a *App) paintChartBars(c *Chart, lg chartLayout) {
 			}
 			if y1 < y0 {
 				y0, y1 = y1, y0
+			}
+			// 兜底：柱体不越出绘图区（数据异常时也不越界）
+			if y0 < lg.plot.Y {
+				y0 = lg.plot.Y
+			}
+			if y1 > lg.plot.Bottom() {
+				y1 = lg.plot.Bottom()
 			}
 			h := y1 - y0
 			if h < 1 {
@@ -333,7 +537,13 @@ func (a *App) paintChartText(c *Chart, lg chartLayout) {
 	leg := a.fonts.get(chartLegendSize, 500)
 	dim := C(ColTextMuted)
 
-	if c.ShowAxis && tick != nil && lg.plot.W > 0 {
+	if c.Type == ChartGauge {
+		a.paintGaugeText(c, lg)
+	}
+	if c.Type == ChartBarH {
+		// 水平条形：类目名在左、数值刻度在底
+		a.paintBarsHText(c, lg)
+	} else if c.ShowAxis && tick != nil && lg.plot.W > 0 && !c.hideAxisTicks() {
 		for _, v := range lg.yTicks {
 			s := fmtNum(v)
 			w := tick.Measure(s)
@@ -348,11 +558,15 @@ func (a *App) paintChartText(c *Chart, lg chartLayout) {
 	}
 
 	// X 轴标签：按可用宽度自动抽稀，避免重叠
-	if label != nil && len(c.Labels) > 0 && c.Type != ChartPie && c.Type != ChartDonut {
+	if label != nil && (len(c.Labels) > 0 || c.Type == ChartHistogram) && !c.hideAxisTicks() && c.Type != ChartBarH && c.Type != ChartPie && c.Type != ChartDonut {
 		n := c.points()
 		if n > 0 {
+			minGap := float32(46)
+			if c.Type == ChartCandle {
+				minGap = 78 // 日期标签比数字宽
+			}
 			stride := 1
-			for stride < n && lg.bandW(n)*float32(stride) < 46 {
+			for stride < n && lg.bandW(n)*float32(stride) < minGap {
 				stride++
 			}
 			ly := lg.plot.Bottom() + 5
@@ -360,10 +574,15 @@ func (a *App) paintChartText(c *Chart, lg chartLayout) {
 				if i%stride != 0 {
 					continue
 				}
-				if i >= len(c.Labels) {
-					break
+				s := ""
+				if c.Type == ChartHistogram {
+					s = c.histLabel(i)
+				} else if i < len(c.Labels) {
+					s = c.Labels[i]
 				}
-				s := c.Labels[i]
+				if s == "" {
+					continue
+				}
 				w := label.Measure(s)
 				x := lg.xAt(i, n) - w/2
 				if x < lg.r.X {
@@ -398,6 +617,13 @@ func (a *App) paintChartText(c *Chart, lg chartLayout) {
 
 	// 图例：右上角起，放不下自动换行（最多 2 行）
 	if leg != nil && c.legendVisible() {
+		// 记录本次图例项命中区（点击切换显隐用）
+		if a.curChartKey != "" {
+			if a.chartLegendHits == nil {
+				a.chartLegendHits = map[string][]chartLegendHit{}
+			}
+			a.chartLegendHits[a.curChartKey] = nil
+		}
 		x := lg.legend.Right()
 		y := lg.legend.Y + (lg.legend.H-leg.LineHeight)/2
 		for i := len(c.Series) - 1; i >= 0; i-- {
@@ -415,6 +641,10 @@ func (a *App) paintChartText(c *Chart, lg chartLayout) {
 				break
 			}
 			x -= itemW
+			if a.curChartKey != "" {
+				a.chartLegendHits[a.curChartKey] = append(a.chartLegendHits[a.curChartKey],
+					chartLegendHit{r: geom.Rect{X: x, Y: lg.legend.Y, W: itemW, H: lg.legend.H}, index: i})
+			}
 			p := c.colorOf(i)
 			a.r.Rect(gpu.Shape{
 				Rect:   geom.Rect{X: x, Y: y + leg.LineHeight/2 - 4, W: 8, H: 8},

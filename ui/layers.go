@@ -309,7 +309,7 @@ func markStaticTree(n *Node) bool {
 	case KVideo, KWebView, KChart, KImage, KRichText, KTerm:
 		ok = false
 	}
-	if ok && (n.Style.Animated || n.Style.BackdropBlur > 0 || n.Focus) {
+	if ok && (n.Style.Animated || n.Style.BackdropBlur > 0 || n.Focus || len(n.anim) > 0) {
 		ok = false
 	}
 	for _, c := range n.Children {

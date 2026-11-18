@@ -31,12 +31,14 @@ var Cases = []CaseItem{
 	{"list", "列表与表格", "▤", "文件树 / 图文卡片 / 列表 / 社区帖子 / 分页 / 数据表格（页内页签切换）"},
 	{"media", "媒体播放", "◉", "视频 / 音频 / 频谱 / 播放列表"},
 	{"layout", "布局与仪表盘", "▨", "Flex / 网格 / 换行 / 瀑布流 / 叠层 / 响应式 / 统计卡"},
-	{"charts", "图表", "◐", "折线 / 面积 / 柱状 / 饼 / 环形 / 雷达 / 散点"},
+	{"charts", "图表", "◐", "18 种：折线 / 柱 / 饼 / K 线 / 条形 / 直方 / 瑰图 / 气泡 / 瀑希 / 箱线 / 分时 / 热力 / 漏斗 / 仪表盘"},
+	{"anim", "组件动画", "◔", "出场动画 / 呼吸 / 漂浮 / 抖动 / 弹跳：任意节点绑定效果，整棵子树一起动"},
 	{"text", "文本与富文本", "✎", "Markdown 渲染 / 富文本 / 代码高亮"},
 	{"system", "系统操作", "◈", "文件与拖入拖出 / 剪贴板 / 热键 / 托盘 / 任务栏 / 窗口特效 / WebView / 打印"},
 	{"office", "办公文档", "▣", "Excel / Word / PDF 读写与渲染 · 打印预览 · 导出 PDF"},
 	{"icons", "图标库", "✦", "Iconfont 矢量图标：内置 80+ 图标 / 任意尺寸清晰 / 换色与线宽 / 运行时注册自定义图标"},
 	{"code", "代码编辑器", "⌨", "十万行虚拟渲染 / 语法高亮 / 行号 + 小地图 / 右键菜单 / LSP 语法解析"},
+	{"net", "网络请求", "⇅", "guis/httpc 类 axios 客户端：实例配置 / 拦截器 / 超时取消 / 重试 / 进度 / 统一错误"},
 	{"term", "伪终端", "▮", "xterm 风格 VT/ANSI 终端：256/真彩色 / 备用屏 / 回看 / 选区复制 / 内置 ConPTY 本地 shell"},
 }
 
@@ -174,6 +176,8 @@ func Content() *ui.Node {
 		return ui.Scroll(layoutCase()).St(ui.St().GrowTo(1)).K("scroll-layout")
 	case "charts":
 		return ui.Scroll(chartsCase()).St(ui.St().GrowTo(1)).K("scroll-charts")
+	case "anim":
+		return ui.Scroll(animCase()).St(ui.St().GrowTo(1)).K("scroll-anim")
 	case "text":
 		return ui.Scroll(textCase()).St(ui.St().GrowTo(1)).K("scroll-text")
 	case "system":
@@ -188,6 +192,9 @@ func Content() *ui.Node {
 	case "code":
 		// 代码编辑器：整页自绘控件（不能包在外层 Scroll 里，滚动由组件自己管理）
 		return codeCase()
+	case "net":
+		// 网络请求：页面内部自带页签 + 滚动区
+		return netCase()
 	case "term":
 		// 伪终端：同样不能包 Scroll（回看滚动由终端自己处理）
 		return termCase()

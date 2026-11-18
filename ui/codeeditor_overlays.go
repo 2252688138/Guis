@@ -6,6 +6,8 @@
 package ui
 
 import (
+	"strings"
+
 	"guis/internal/geom"
 	"guis/internal/gpu"
 	"guis/internal/text"
@@ -20,6 +22,11 @@ func (e *CodeEditorState) paintOverlays(a *App, r geom.Rect, f *text.Font) {
 	panelStroke := C("#30363d")
 	dim := C("#6e7681")
 	accent := C("#388bfd")
+
+	// ---- 符号大纲 ----
+	if e.outlineOpen {
+		e.paintOutlinePanel(a, r, smallF, panelBg, panelStroke, dim, accent)
+	}
 
 	// ---- 查找 / 替换面板 ----
 	if e.findOpen {
@@ -112,10 +119,22 @@ func (e *CodeEditorState) paintOverlays(a *App, r geom.Rect, f *text.Font) {
 
 	// ---- 悬停信息（签名 / 标题 / 列表分色，段落间虚线隔开）----
 	if e.hoverOpen && len(e.hoverLines) > 0 {
-		w := float32(380)
-		if w > r.W-20 {
-			w = r.W - 20
+		// 面板宽度按内容自适应：中文比英文宽，按字符数估宽会让长中文行画出面板。
+		avail := r.W - 20
+		contentW := float32(0)
+		for _, ln := range e.hoverLines {
+			if lw := smallF.Measure(ln); lw > contentW {
+				contentW = lw
+			}
 		}
+		w := contentW + codeHoverPadX*2
+		if w < 220 {
+			w = 220
+		}
+		if w > avail {
+			w = avail
+		}
+		textW := w - codeHoverPadX*2
 		h := e.hoverPanelHeight()
 		x, y := r.X+e.hoverX, r.Y+e.hoverY
 		if x+w > r.Right()-4 {
@@ -140,27 +159,44 @@ func (e *CodeEditorState) paintOverlays(a *App, r geom.Rect, f *text.Font) {
 				if kind == hoverCodeKind {
 					if spans := e.hoverCodeSpans(ln); len(spans) > 0 {
 						px, prev := x+codeHoverPadX, 0
+						limit := x + codeHoverPadX + textW
+						// paint 画一段并推进 px；返回 false 表示已经截断，后面不用再画。
+						paint := func(seg string, col gpu.Paint) bool {
+							if seg == "" || px >= limit {
+								return false
+							}
+							seg = clipTextWidth(smallF, seg, limit-px)
+							if seg == "" {
+								return false
+							}
+							a.r.TextRun(gpu.TextRun{X: px, Y: cy, Text: seg, Font: smallF, Color: col})
+							px += smallF.Measure(seg)
+							return !strings.HasSuffix(seg, "…")
+						}
+						more := true
 						for _, sp := range spans {
+							if !more {
+								break
+							}
 							if sp.Pos > prev {
-								seg := hoverSub(ln, prev, sp.Pos)
-								a.r.TextRun(gpu.TextRun{X: px, Y: cy, Text: seg, Font: smallF, Color: th.Text})
-								px += smallF.Measure(seg)
+								more = paint(hoverSub(ln, prev, sp.Pos), th.Text)
 							}
-							seg := hoverSub(ln, sp.Pos, sp.End)
-							if seg != "" {
-								a.r.TextRun(gpu.TextRun{X: px, Y: cy, Text: seg, Font: smallF, Color: codePaintFor(th, sp.Kind)})
-								px += smallF.Measure(seg)
+							if !more {
+								break
 							}
+							more = paint(hoverSub(ln, sp.Pos, sp.End), codePaintFor(th, sp.Kind))
 							prev = sp.End
 						}
-						if rest := hoverSub(ln, prev, runeLen(ln)); rest != "" {
-							a.r.TextRun(gpu.TextRun{X: px, Y: cy, Text: rest, Font: smallF, Color: th.Text})
+						if more {
+							paint(hoverSub(ln, prev, runeLen(ln)), th.Text)
 						}
 						cy += codeHoverRowH
 						continue
 					}
 				}
-				a.r.TextRun(gpu.TextRun{X: x + codeHoverPadX, Y: cy, Text: ln, Font: smallF, Color: e.hoverLinePaint(kind)})
+				if seg := clipTextWidth(smallF, ln, textW); seg != "" {
+					a.r.TextRun(gpu.TextRun{X: x + codeHoverPadX, Y: cy, Text: seg, Font: smallF, Color: e.hoverLinePaint(kind)})
+				}
 			}
 			cy += codeHoverLineH(kind)
 		}
@@ -262,14 +298,25 @@ func (e *CodeEditorState) paintFindPanel(a *App, r geom.Rect, smallF, monoF *tex
 		a.r.TextRun(gpu.TextRun{X: r.X + br.X + (br.W-w)/2, Y: r.Y + br.Y + 3, Text: label, Font: smallF, Color: col})
 	}
 	drawBtn(2, "Aa", e.findCase)
+	drawBtn(7, ".*", e.FindRegex)
+	drawBtn(8, "⊂", e.FindInSel)
 	drawBtn(3, "↑", false)
 	drawBtn(4, "↓", false)
 	drawBtn(5, "×", false)
 
-	// 命中数 / 模式提示
+	// 命中数 / 当前序号 / 模式提示
 	if e.findMode != 1 && e.findText != "" {
-		tip := codeItoa(e.MatchCount()) + " 处"
-		if e.findMode == 3 {
+		tip := "无结果"
+		if msg := e.FindPatternError(); msg != "" {
+			tip = msg
+		} else if total := e.MatchCount(); total > 0 {
+			if cur := e.MatchIndex(); cur > 0 {
+				tip = "第 " + codeItoa(cur) + " / " + codeItoa(total) + " 项"
+			} else {
+				tip = codeItoa(total) + " 处"
+			}
+		}
+		if e.findMode == 3 && e.FindPatternError() == "" {
 			tip = "Tab 切换  Ctrl+Enter 全部"
 		}
 		a.r.TextRun(gpu.TextRun{X: r.X + pr.W - 12 - smallF.Measure(tip), Y: r.Y + pr.H - 13,
@@ -310,13 +357,38 @@ func (e *CodeEditorState) paintDiagPanel(a *App, r geom.Rect, smallF *text.Font,
 			col, mark = th.Type, "i"
 		}
 		a.r.TextRun(gpu.TextRun{X: x + 10, Y: ry + 3, Text: mark, Font: smallF, Color: col})
-		msg := d.Message
-		if runeLen(msg) > 52 {
-			msg = string([]rune(msg)[:52]) + "…"
-		}
-		a.r.TextRun(gpu.TextRun{X: x + 24, Y: ry + 3, Text: msg, Font: smallF, Color: th.Text})
 		pos := codeItoa(d.Line+1) + ":" + codeItoa(d.Col+1)
-		a.r.TextRun(gpu.TextRun{X: x + dr.W - 16 - smallF.Measure(pos), Y: ry + 3,
+		posW := smallF.Measure(pos)
+		// 消息按剩余像素宽截断：诊断翻成中文后比英文长，按字符数截会溢出面板。
+		if msg := clipTextWidth(smallF, d.Message, dr.W-24-16-posW-10); msg != "" {
+			a.r.TextRun(gpu.TextRun{X: x + 24, Y: ry + 3, Text: msg, Font: smallF, Color: th.Text})
+		}
+		a.r.TextRun(gpu.TextRun{X: x + dr.W - 16 - posW, Y: ry + 3,
 			Text: pos, Font: smallF, Color: dim})
 	}
+}
+
+// clipTextWidth 按像素宽度截断文字（中文按实际字宽算），超出补省略号。
+// 浮层里不能用 rune 数当宽度：一个汉字约等于两个英文字符宽，长中文行会画出面板。
+func clipTextWidth(f *text.Font, s string, maxW float32) string {
+	if s == "" || maxW <= 0 {
+		return ""
+	}
+	if f.Measure(s) <= maxW {
+		return s
+	}
+	rs := []rune(s)
+	ellW := f.Measure("…")
+	acc := float32(0)
+	for i, r := range rs {
+		w := f.Measure(string(r))
+		if acc+w+ellW > maxW {
+			if i == 0 {
+				return "…"
+			}
+			return string(rs[:i]) + "…"
+		}
+		acc += w
+	}
+	return s
 }
