@@ -39,6 +39,10 @@ const (
 	KIcon
 	// KTerm 伪终端（VT/ANSI 字符网格，自绘控件，可接 PTY 或自定义数据源）。
 	KTerm
+	// KViewport3D 3D 游戏视口（由 ViewportSource 每帧提供 RGBA 像素）。
+	KViewport3D
+	// KCanvas 自绘画布（声明式形状在 CPU 上光栅成纹理）。
+	KCanvas
 )
 
 // Node 声明式节点（每帧重建，交互状态按 Key 继承）。
@@ -59,6 +63,10 @@ type Node struct {
 	WebView *WebView
 	// Chart 图表数据与缓存（Kind == KChart 时生效）。
 	Chart *Chart
+	// Viewport 3D 游戏视口状态（Kind == KViewport3D 时生效）。
+	Viewport *Viewport3DState
+	// Canvas 自绘画布状态（Kind == KCanvas 时生效）。
+	Canvas *CanvasState
 	// Code 代码编辑器状态（Kind == KCodeEditor 时生效）。
 	Code *CodeEditorState
 	// IconName 图标名（Kind == KIcon 时生效，见 ui/iconfont.go 的内置图标表）。
@@ -80,6 +88,14 @@ type Node struct {
 	OnSpanClick func(TextSpan)
 	// OnActivate 键盘 Enter/Space 激活回调（无则回退 OnClick）。
 	OnActivate func()
+	// FocusTrap 为 true 时本子树成为焦点陷阱（模态）：Tab/Shift+Tab 只在子树内
+	// 循环，子树出现的当帧自动聚焦首项（见 Node.Trap）。
+	FocusTrap bool
+	// RovingKey 非空时，本节点的直接子节点组成 roving tabindex 组：组内只有
+	// 活动项占一个 Tab 位，方向键在组内移动（见 Node.Rove）。
+	RovingKey string
+	// GestureOpts 手势回调（长按 / 滑动 / 拖动 / 捻合），见 Node.Gestures。
+	GestureOpts GestureOptions
 	// A11y 无障碍元数据（角色/名称/描述），当前仅用于导出与调试。
 	A11y    A11yInfo
 	OnClick func()
@@ -100,8 +116,13 @@ type Node struct {
 	// OnChar / OnKey 仅在节点获得键盘焦点时收到事件。
 	OnChar func(rune)
 	OnKey  func(uint32)
+	// OnKeyUp 键盘抬起（仅焦点节点收到，与 OnKey 对称）。
+	OnKeyUp func(uint32)
 	// OnDrag 按下并拖动时回调（坐标相对节点左上角）；Disabled 禁用点击与拖动。
 	OnDrag func(x, y float32)
+	// OnTouch 触摸事件回调（phase：0=按下、1=移动、2=抬起；id 区分多指）。
+	// 命中本节点后事件不再向下派发给视口，虚拟摇杆 / 触屏按钮用它。
+	OnTouch func(x, y float32, phase int, id int)
 	// OnDragEnd 拖动结束（松手）时回调，对应 gio Clickable.Pressed() 由 true→false；
 	// 拖动类组件据此提交最终值，不必靠超时猜测松手。
 	OnDragEnd func()

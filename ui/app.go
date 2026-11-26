@@ -79,7 +79,7 @@ type App struct {
 	// chartLegendHits 图例项命中区（按图表 Key 保存，绘制时写、点击时读）。
 	chartLegendHits map[string][]chartLegendHit
 	// curChartKey 当前正在绘制的图表 Key（paintChart 设置，供图例记录命中区）。
-	curChartKey string
+	curChartKey    string
 	clickX, clickY float32
 
 	// 右键按下：下一帧（树指针有效时）分发给 OnRightClickAt。
@@ -643,6 +643,13 @@ func (a *App) handleEvent(ev Event) {
 		a.pressed, a.pressSent = false, false
 		a.dirty = true
 	case EvMouseMove:
+		gesturePointer(a, ev.X/uiScale, ev.Y/uiScale, 1, gestureMousePointer)
+		if vp := lockedViewport(a.root); vp != nil {
+			vp.MouseDelta(ev.DX, ev.DY)
+			a.dirty = true
+			return
+		}
+
 		prevMouseX := a.mouseX
 		a.mouseX, a.mouseY = ev.X/uiScale, ev.Y/uiScale
 		a.mouseIn = true
@@ -677,6 +684,7 @@ func (a *App) handleEvent(ev Event) {
 		// 这条提示还会僵在原窗口上（多窗口时最明显）。
 		a.tipText = ""
 	case EvMouseDown:
+		gesturePointer(a, ev.X/uiScale, ev.Y/uiScale, 0, gestureMousePointer)
 		a.mouseX, a.mouseY = ev.X/uiScale, ev.Y/uiScale
 		// 手指/鼠标重新按下：惯性滑行应当立即停住（否则内容会从指针底下滑走）
 		a.stopFling()
@@ -692,6 +700,7 @@ func (a *App) handleEvent(ev Event) {
 		a.pressed = true
 		a.dirty = true
 	case EvMouseUp:
+		gesturePointer(a, ev.X/uiScale, ev.Y/uiScale, 2, gestureMousePointer)
 		a.mouseX, a.mouseY = ev.X/uiScale, ev.Y/uiScale
 		// Cancel：本条是「触摸滑动后松手」，只结束按下状态，不进点击链路
 		// （否则手机上滑一下页面，松手位置的卡片就被点开了）。
@@ -704,6 +713,22 @@ func (a *App) handleEvent(ev Event) {
 		a.scrollDragKey = ""
 		a.pressSent = false
 		a.dirty = true
+	case EvTouchDown, EvTouchMove, EvTouchUp:
+		a.mouseX, a.mouseY = ev.X/uiScale, ev.Y/uiScale
+		ph := 1
+		if ev.Type == EvTouchDown {
+			ph = 0
+			a.pressed = true
+			a.pressX, a.pressY = a.mouseX, a.mouseY
+		} else if ev.Type == EvTouchUp {
+			ph = 2
+			a.pressed = false
+		}
+		// 手势识别（观察者：只观察指针流，不消费事件）
+		gesturePointer(a, a.mouseX, a.mouseY, ph, int(ev.Pointer))
+		if a.dispatchTouch(a.mouseX, a.mouseY, ph, int(ev.Pointer)) {
+			a.dirty = true
+		}
 	case EvMouseWheel:
 		// Pointer==1 表示这条滚轮事件是触摸拖动合成的：直接定位（1:1 跟手），
 		// 不再走缓动，否则手机滑动手感明显发黏。
@@ -758,6 +783,11 @@ func (a *App) handleEvent(ev Event) {
 			a.dirty = true
 			return
 		}
+		// roving tabindex 组内方向键移动（Tabs / 工具栏 / 单选组；输入框不吃这层）
+		if rovingHandleKey(ev.Key) {
+			a.dirty = true
+			return
+		}
 		// Tab / Shift+Tab 在可聚焦控件间移动
 		if ev.Key == VK_TAB {
 			if a.shiftDown {
@@ -806,6 +836,10 @@ func (a *App) handleEvent(ev Event) {
 			a.dirty = true
 		}
 	case EvKeyUp:
+		if n := a.focusedNode(); n != nil && n.OnKeyUp != nil {
+			n.OnKeyUp(ev.Key)
+			a.dirty = true
+		}
 		if ev.Key == VK_SHIFT {
 			a.shiftDown = false
 		}
@@ -957,6 +991,12 @@ func (a *App) frame(forced bool) {
 	}
 	Layout(root, w, h, a.fonts)
 	root.Frame = geom.Rect{X: 0, Y: 0, W: w, H: h}
+	// 焦点陷阱（Node.Trap）：模态出现的当帧把焦点收进子树；清掉本帧标记，
+	// 下一帧没有模态时 syncFocusTrap 直接返回（不付全树遍历的成本）。
+	a.syncFocusTrap()
+	trapUsed.Store(false)
+	// 手势识别：长按需要帧驱动（按住不动超时触发），其它手势由指针事件推入
+	gestureTick()
 	// DevTools 采集：Layout 之后 Frame 才有效，这里抓本帧的节点树与规模指标
 	if devOn && a.devRoot != nil {
 		devtoolsSample(a, a.devRoot, w, h, msSince(frameT0))
@@ -1368,6 +1408,12 @@ func (a *App) paint(n *Node, sy float32) {
 		a.r.Rect(gpu.Shape{Rect: r, Radius: st.Radius, Stroke: st.Border, StrokeColor: st.BorderColor})
 	}
 
+	if p := os.Getenv("GUIS_VP_LOG"); p != "" {
+		if f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(f, "[paint] kind=%d key=%q rect=(%.0f,%.0f %.0fx%.0f)\n", n.Kind, n.Key, r.X, r.Y, r.W, r.H)
+			f.Close()
+		}
+	}
 	switch n.Kind {
 	case KText, KButton:
 		a.paintText(n, r, st)
@@ -1391,6 +1437,10 @@ func (a *App) paint(n *Node, sy float32) {
 		a.paintCodeEditor(n, r)
 	case KTerm:
 		a.paintTerm(n, r)
+	case KViewport3D:
+		a.paintViewport3D(n, r, st)
+	case KCanvas:
+		a.paintCanvas(n, r)
 	}
 
 	childSy := sy
@@ -1920,7 +1970,7 @@ func inputPassthrough(n *Node) bool {
 		return false
 	}
 	switch n.Kind {
-	case KScroll, KImage, KVideo, KWebView, KChart, KRichText, KArrow, KTerm:
+	case KScroll, KImage, KVideo, KWebView, KChart, KRichText, KArrow, KTerm, KViewport3D, KCanvas:
 		return false
 	}
 	if n.Style.Bg.A > 0 || n.Style.BgTo.A > 0 || n.Style.Border > 0 || n.Style.BackdropBlur > 0 {

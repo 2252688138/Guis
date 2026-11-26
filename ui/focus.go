@@ -98,6 +98,10 @@ func (a *App) focusRoot() *Node {
 			return n
 		}
 	}
+	// 声明式焦点陷阱（Node.Trap）：显式作用域栈优先级更高，避免改变既有用法。
+	if t := deepestTrap(a.root); t != nil {
+		return t
+	}
 	return a.root
 }
 
@@ -111,6 +115,16 @@ func (a *App) focusables() []*Node {
 	var walk func(n *Node)
 	walk = func(n *Node) {
 		if n == nil || n.Disabled || n.Style.Opacity <= 0 {
+			return
+		}
+		// roving tabindex 组：整组只出一个 Tab 站点（当前活动项），
+		// 其余项用方向键访问（见 Node.Rove / rovingHandleKey）。
+		if n.RovingKey != "" {
+			if it := roveActiveItem(n); it != nil {
+				if f := firstFocusableIn(it); f != nil {
+					out = append(out, f)
+				}
+			}
 			return
 		}
 		if n.Style.Focusable && n.Key != "" {
