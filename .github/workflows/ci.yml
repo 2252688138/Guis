@@ -85,6 +85,9 @@ jobs:
         with:
           # 配置见仓库根目录 .golangci.yml（v2 格式，需要 golangci-lint >= 2.0）
           version: latest
+          # 历史代码里有 8 处 ineffassign（纯冗余赋值，不影响行为），
+          # 一次性清理风险大于收益；先只卡新引入的问题，存量单独排期。
+          only-new-issues: true
           args: --timeout=5m
 
   bench:

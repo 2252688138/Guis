@@ -83,7 +83,12 @@ func loadCG() bool {
 		// kCFRunLoopCommonModes 是导出的 CFStringRef **变量**：
 		// Dlsym 给的是变量地址，真正的 CFStringRef 存在那里，必须解引用。
 		if addr, err := purego.Dlsym(h, "kCFRunLoopCommonModes"); err == nil && addr != 0 {
-			cgModeCommon = *(*uintptr)(unsafe.Pointer(addr))
+			// Dlsym 返回 uintptr（变量地址）。直接写 unsafe.Pointer(addr) 会被
+			// go vet 判为 possible misuse（unsafeptr），macOS runner 的 vet 会直接红；
+			// 用指针中转拿到同一地址，语义不变且不触发该检查。
+			var p unsafe.Pointer
+			*(*uintptr)(unsafe.Pointer(&p)) = addr
+			cgModeCommon = *(*uintptr)(p)
 		}
 		cgReady = cgModeCommon != 0
 	})

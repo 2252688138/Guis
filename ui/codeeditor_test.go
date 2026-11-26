@@ -280,6 +280,7 @@ func TestLSPStripSnippet(t *testing.T) {
 
 // TestFileURI Windows 路径 → URI → 路径 往返。
 func TestFileURIRoundTrip(t *testing.T) {
+	skipOnNonWindows(t, "fileURI 往返用盘符路径（C:\\proj\\main.go）做基准")
 	for _, p := range []string{`C:\proj\main.go`, `H:\JIMaX\guis\ui\codeeditor.go`} {
 		u := FileURI(p)
 		if !strings.HasPrefix(u, "file:///") {

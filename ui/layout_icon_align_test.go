@@ -13,6 +13,7 @@ import "testing"
 // 总有 1~2px 的偏差（含降部的西文偏低、全大写/数字偏高）。框架按同行文字的墨迹
 // 包围盒算出差值，用绘制期 DrawY 抹平，布局与命中区域保持不变。
 func TestIconAutoAlignToText(t *testing.T) {
+	skipOnNonWindows(t, "图标对齐依赖 Microsoft YaHei UI 的字体度量")
 	fc := newTestCache()
 	defer fc.close()
 	f := fc.getFamily(13, 500, "")

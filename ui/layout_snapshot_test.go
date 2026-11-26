@@ -153,6 +153,7 @@ func layoutCases() []layoutCase {
 }
 
 func TestLayoutSnapshot(t *testing.T) {
+	skipOnNonWindows(t, "布局快照基线以 Microsoft YaHei UI 度量生成")
 	update := os.Getenv("UPDATE_SNAPSHOTS") == "1"
 	dir := filepath.Join("testdata", "layout_snapshot")
 

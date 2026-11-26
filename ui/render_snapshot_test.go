@@ -111,6 +111,7 @@ func renderSnapshotCases() []GoldenCase {
 
 // TestRenderSnapshot 绘制属性快照（UPDATE_SNAPSHOTS=1 生成 / 更新）。
 func TestRenderSnapshot(t *testing.T) {
+	skipOnNonWindows(t, "渲染快照基线以 Microsoft YaHei UI 度量生成")
 	withTestFonts(t)
 	update := os.Getenv("UPDATE_SNAPSHOTS") != ""
 	dir := filepath.Join("testdata", "render_snapshot")

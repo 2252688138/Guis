@@ -5,6 +5,11 @@
 
 package ui
 
+import (
+	"runtime"
+	"testing"
+)
+
 // 测试公用小工具（无 build tag）。
 //
 // findNodeKey 原本住在 music_test.go（//go:build windows），而 autowrap_test.go
@@ -24,4 +29,16 @@ func findNodeKey(n *Node, key string) *Node {
 		}
 	}
 	return nil
+}
+
+// skipOnNonWindows 跳过以 Windows 字体度量为基准的测试。
+//
+// 布局 / 渲染快照与图标对齐都依赖 newFontCache("Microsoft YaHei UI") 的字宽度量，
+// Linux / macOS runner 上没有该字体（会 fallback 到别的字体），基线必然不匹配。
+// 这里明确跳过而不是放宽断言：跳过是诚实的“未验证”，放宽会掩盖真回归。
+func skipOnNonWindows(t *testing.T, why string) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		t.Skip("仅 Windows 验证：" + why)
+	}
 }

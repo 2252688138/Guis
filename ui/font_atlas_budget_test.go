@@ -23,6 +23,7 @@ func growAtlasFor(f *text.Font, n int) {
 
 // TestFontCacheAtlasBudgetEvicts 超预算时回收最久未使用的字体。
 func TestFontCacheAtlasBudgetEvicts(t *testing.T) {
+	skipOnNonWindows(t, "图集预算依赖 Microsoft YaHei UI 的字体度量")
 	old := fontAtlasBudget
 	defer func() { fontAtlasBudget = old }()
 

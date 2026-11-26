@@ -31,6 +31,9 @@ linters:
       - internal/uikit
       - internal/objc
       - internal/android
+      # GPU 后端是手写 OpenGL 函数表（wglGetProcAddress 返回 uintptr），
+      # geom.Rect 字面量按位置传参是既有写法；与 win32 / x11 同一类问题。
+      - internal/gpu
       # OpenGL 函数表通过 wglGetProcAddress 返回 uintptr，读回字符串必须转指针，
       # govet 的 unsafeptr 会对此误报（与手写 syscall 层同一类）。
       - game/gpu_gl
