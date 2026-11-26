@@ -1,3 +1,5 @@
+//go:build linux || freebsd
+
 // guis
 // Author  : Mr.Shu
 // Website : www.cq6k.com
