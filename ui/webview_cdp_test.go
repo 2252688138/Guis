@@ -22,6 +22,7 @@ const cdpTestHTML = `<html><body style="margin:0;background:#0b1220;color:#fff">
 </body></html>`
 
 func TestCDPWebViewRendersAndForwardsInput(t *testing.T) {
+	skipOnNonWindows(t, "需要本机 Chromium / Edge 的 DevTools 端点")
 	if webcdp.LocateBrowser() == "" {
 		t.Skip("本机没有 Chromium 系浏览器，跳过")
 	}
