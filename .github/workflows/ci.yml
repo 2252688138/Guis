@@ -71,8 +71,30 @@ jobs:
       # Android 目标从交叉编译中移除：internal/android 全部为 //go:build android && cgo，
       # 构建需要 NDK 与 cgo；ubuntu runner 上 CGO_ENABLED=0 会让包内无文件，
       # ui 的 android 后端 import 直接失败。需要验证时在本地用 NDK 构建。
-      - name: macOS
-        run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./ui/...
+      #
+      # macOS 不只验证包能编译，还要产出两个架构的可执行文件：
+      # internal/cocoa 全走 purego（dlopen AppKit），CGO_ENABLED=0 也能得到完整后端，
+      # 产物是真 Mach-O，不必有 Mac 才能构建。
+      - name: macOS（包 + 两个架构的可执行文件）
+        run: |
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./ui/...
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /tmp/guis-darwin-arm64 ./cmd/gallery
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /tmp/guis-darwin-amd64 ./cmd/gallery
+          file /tmp/guis-darwin-arm64 /tmp/guis-darwin-amd64
+
+      # build-macos.ps1 自检：.app bundle 的结构（Info.plist / PkgInfo / icns）别退化。
+      - name: macOS .app bundle（脚本自检）
+        shell: pwsh
+        run: ./build-macos.ps1 -Arch all -OutDir dist-macos
+
+      - name: 上传 macOS 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: guis-macos
+          path: |
+            dist-macos/*.app
+            /tmp/guis-darwin-arm64
+            /tmp/guis-darwin-amd64
 
   lint:
     name: golangci-lint
