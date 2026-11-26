@@ -249,22 +249,6 @@ func TestMusicPlayerLayout(t *testing.T) {
 	}
 }
 
-// findNodeKey 在节点树里按键查找节点（测试辅助）。
-func findNodeKey(n *Node, key string) *Node {
-	if n == nil {
-		return nil
-	}
-	if n.Key == key {
-		return n
-	}
-	for _, c := range n.Children {
-		if r := findNodeKey(c, key); r != nil {
-			return r
-		}
-	}
-	return nil
-}
-
 // writeTestWAV 写一个 1 秒 440Hz 单声道 16bit WAV（验证 WAV 头与探测链路）。
 func writeTestWAV(path string) error {
 	const rate = 44100

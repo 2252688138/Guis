@@ -286,13 +286,6 @@ func hotSaveStateNow() {
 	}
 }
 
-// hotBoundsBackend 可选后端能力：读取 / 设置窗口在屏幕上的位置与尺寸。
-// 目前 Windows 后端实现（见 backend_windows.go），其余平台缺失时只丢失几何信息。
-type hotBoundsBackend interface {
-	Bounds() (x, y, w, h int, maximized bool)
-	SetBounds(x, y, w, h int)
-}
-
 // hotApplyRestore 新窗口建好后恢复上次现场（非热重载时为空操作）。
 func hotApplyRestore(a *App) {
 	if a == nil || a.win == nil || !hotRestored.ok {

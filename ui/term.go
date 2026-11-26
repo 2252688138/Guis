@@ -989,14 +989,6 @@ func ensureTermLocked(t *TermState) {
 	}
 }
 
-// maxInt 两整数较大值。
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // Terminal 把状态构建成节点（每帧调用；键盘拦截器在此重新登记）。
 func Terminal(st *TermState) *Node {
 	if st == nil {

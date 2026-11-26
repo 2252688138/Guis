@@ -334,13 +334,6 @@ func clampInt(v, lo, hi int) int {
 	return v
 }
 
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func clampFloat(v, lo, hi float64) float64 {
 	if v < lo {
 		return lo

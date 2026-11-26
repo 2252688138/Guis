@@ -62,9 +62,9 @@ jobs:
       - name: Web (wasm)
         run: GOOS=js GOARCH=wasm go build ./ui/... ./cmd/gallery/...
 
-      - name: Android
-        run: GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build ./ui/...
-
+      # Android 目标从交叉编译中移除：internal/android 全部为 //go:build android && cgo，
+      # 构建需要 NDK 与 cgo；ubuntu runner 上 CGO_ENABLED=0 会让包内无文件，
+      # ui 的 android 后端 import 直接失败。需要验证时在本地用 NDK 构建。
       - name: macOS
         run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./ui/...
 
@@ -79,7 +79,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - uses: golangci/golangci-lint-action@v6
+      # v8 才支持 golangci-lint v2；v6 只装 v1.x（go1.24 构建），
+      # 无法分析 go1.26 项目，会报“Go version used to build golangci-lint is lower”。
+      - uses: golangci/golangci-lint-action@v8
         with:
           # 配置见仓库根目录 .golangci.yml（v2 格式，需要 golangci-lint >= 2.0）
           version: latest
@@ -99,8 +101,12 @@ jobs:
       - name: 安装 benchstat
         run: go install golang.org/x/perf/cmd/benchstat@latest
 
+      # bench/ 目录里只存基线文件（已移到本地 项目/ 不入库），checkout 后目录不存在，
+      # 直接重定向会 “No such file or directory”。
       - name: 跑基准
-        run: go test ./ui/ -run '^$' -bench . -benchtime 200ms -count 5 > bench/new.txt
+        run: |
+          mkdir -p bench
+          go test ./ui/ -run '^$' -bench . -benchtime 200ms -count 5 > bench/new.txt
 
       - name: 与基线对比
         run: |
