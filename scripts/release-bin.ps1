@@ -60,8 +60,9 @@ if (-not $SkipBuild) {
 }
 
 $OutDirAbs = (Resolve-Path $OutDir).Path
+# macOS 发的是 .app bundle 的 zip（裸二进制在 Mac 上 Dock 名/图标不完整且会被 Gatekeeper 拒）
 $allowed = @('guis-gallery-windows-amd64.exe', 'guis-gallery-linux-amd64', 'guis-gallery-linux-arm64',
-    'guis-gallery-darwin-arm64', 'guis-gallery-darwin-amd64', 'guis-gallery.wasm',
+    'guis-gallery-macos-arm64.app.zip', 'guis-gallery-macos-amd64.app.zip', 'guis-gallery.wasm',
     'wasm_exec.js', 'SHA256SUMS.txt')
 $assets = $allowed | ForEach-Object { Join-Path $OutDirAbs $_ } | Where-Object { Test-Path -LiteralPath $_ }
 if (-not $assets) { throw ("{0} 里没有可发布的产物，先跑 build-bin.ps1。" -f $OutDir) }

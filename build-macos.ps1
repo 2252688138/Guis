@@ -14,9 +14,14 @@ macOS 的 GUI 程序需要 .app bundle，只拷裸二进制会出现 Dock 名称
 版本号唯一来源是仓库根目录 VERSION.txt，与 build.ps1 / build-multi.ps1 一致，
 通过 -ldflags -X 注入 guis/internal/version.*。
 
-与 build-multi.ps1 的分工：
+-Zip 会打成可直接分发的 zip，并且**写入 Unix 权限位**（目录 0755、Contents/MacOS/*
+0755、其余 0644）。这一点很关键：Compress-Archive 不写外部属性，macOS 解压后
+可执行文件会丢 +x，双击没反应。
+
+与其它脚本的分工：
   build-multi.ps1 -Only darwin   只产出裸二进制（验证能否编译）
   build-macos.ps1                产出可分发的 .app bundle（可加 -Zip）
+  build-bin.ps1                  各端演示二进制汇总（macOS 走本脚本的 .app.zip）
 
 .EXAMPLE
 ./build-macos.ps1                      # dist\GUIS-arm64.app + dist\GUIS-amd64.app
@@ -33,6 +38,8 @@ param(
     [ValidateSet('dev', 'release')]
     [string]$Channel = 'release',
     [switch]$Zip,
+    # 打完 zip 后删掉 .app 目录（只留 zip）
+    [switch]$RemoveAppAfterZip,
     [switch]$SkipIcon
 )
 
@@ -67,9 +74,10 @@ if (-not (Test-Path -LiteralPath $OutDir)) {
 }
 $OutDirAbs = (Resolve-Path $OutDir).Path
 
-# ================= icns 合成 =================
-# 现代 macOS 支持「PNG-based icns」：icns 头 + 若干 (4 字节类型 + 大端长度 + PNG 原始字节)。
-# 类型码：icp4=16, icp5=32, ic07=128, ic08=256, ic12=64。
+# ================= 工具函数 =================
+# icns 合成：现代 macOS 支持「PNG-based icns」，即 icns 头 + 若干
+# (4 字节类型 + 大端长度 + PNG 原始字节)。类型码：icp4=16, icp5=32, ic07=128,
+# ic08=256, ic12=64。
 function New-Icns {
     param([string]$Path, [hashtable]$Map)
 
@@ -97,6 +105,44 @@ function New-Icns {
     }
 }
 
+# 打 .app 的 zip：必须写 Unix 权限位。
+#   目录  drwxr-xr-x = 040755 = 0x41ED
+#   可执行 -rwxr-xr-x = 0100755 = 0x81ED
+#   普通  -rw-r--r-- = 0100644 = 0x81A4
+# 外部属性取 mode << 16（高 16 位存 st_mode，低 16 位在 DOS 属性里）。
+function New-AppZip {
+    param([string]$AppDir, [string]$ZipPath)
+
+    if (Test-Path -LiteralPath $ZipPath) { Remove-Item -LiteralPath $ZipPath -Force }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
+
+    $parent = Split-Path -Parent $AppDir
+    $zip = [System.IO.Compression.ZipFile]::Open($ZipPath, 'Create')
+    try {
+        # 目录条目（含 .app 根）
+        $dirs = @($AppDir) + @(Get-ChildItem -LiteralPath $AppDir -Recurse -Directory | Select-Object -ExpandProperty FullName)
+        foreach ($d in $dirs) {
+            $rel = $d.Substring($parent.Length + 1).Replace('\', '/') + '/'
+            $entry = $zip.CreateEntry($rel, [System.IO.Compression.CompressionLevel]::NoCompression)
+            $entry.ExternalAttributes = (0x41ED -shl 16)
+        }
+        # 文件条目
+        foreach ($f in Get-ChildItem -LiteralPath $AppDir -Recurse -File) {
+            $rel = $f.FullName.Substring($parent.Length + 1).Replace('\', '/')
+            $entry = $zip.CreateEntry($rel, [System.IO.Compression.CompressionLevel]::Optimal)
+            $mode = 0x81A4
+            if ($rel -like '*/Contents/MacOS/*') { $mode = 0x81ED }
+            $entry.ExternalAttributes = ($mode -shl 16)
+            $out = $entry.Open()
+            $in = [System.IO.File]::OpenRead($f.FullName)
+            try { $in.CopyTo($out) } finally { $in.Close(); $out.Dispose() }
+        }
+    } finally {
+        $zip.Dispose()
+    }
+}
+
+# ================= 图标源 =================
 $assets = Join-Path (Join-Path $PSScriptRoot 'ui') 'assets'
 $icnsMap = @{}
 foreach ($pair in @(
@@ -170,12 +216,14 @@ foreach ($a in $targets) {
     $bundles += $appDir
 }
 
+# ================= 打包 =================
 if ($Zip) {
     foreach ($d in $bundles) {
         $zipPath = "$d.zip"
-        if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
-        Compress-Archive -Path $d -DestinationPath $zipPath -CompressionLevel Optimal
-        Write-Host ("  zip -> {0}" -f (Split-Path -Leaf $zipPath)) -ForegroundColor Green
+        New-AppZip -AppDir $d -ZipPath $zipPath
+        $zipMB = [math]::Round((Get-Item -LiteralPath $zipPath).Length / 1MB, 2)
+        Write-Host ("  zip -> {0}（{1} MB，含 Unix 权限位）" -f (Split-Path -Leaf $zipPath), $zipMB) -ForegroundColor Green
+        if ($RemoveAppAfterZip) { Remove-Item -LiteralPath $d -Recurse -Force }
     }
 }
 
