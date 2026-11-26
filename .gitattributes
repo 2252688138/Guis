@@ -1,0 +1,33 @@
+# 统一行尾：仓库内一律 LF，检出也一律 LF。
+#
+# 原因：ui 的布局/渲染快照测试逐字节比对 testdata 下的基线文件。
+# 之前 Windows 上以 CRLF 提交、Linux CI 以 LF 检出，快照测试在 CI 与
+# 「git archive 导出的干净目录」里全部失败（期望与实际肉眼一致，只差 \r）。
+#
+# 注意：不要改成 eol=crlf，否则 Linux/CI 侧又会相反地失败。
+
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.bmp binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.zip binary
+*.gz binary
+*.7z binary
+*.exe binary
+*.dll binary
+*.syso binary
+*.a binary
+*.so binary
+*.dylib binary
+*.pdf binary
+*.wasm binary
