@@ -239,6 +239,33 @@ ui.SetCrashHandler(func(r ui.CrashReport) {          // panic 恢复 + 写盘后
 // 结构体
 type CrashReport struct {
     Time    time.Time
+
+## 12. 焦点陷阱与 roving tabindex
+
+模态弹窗、抽屉这类浮层打开后，背景控件必须拿不到焦点（否则 Tab 会跑到遮罩后面）。
+命令式的 `PushFocusScope` / `PopFocusScope` 需要自己成对调用，声明式树被条件分支跳过时很容易漏 `Pop`，
+所以推荐用节点标记，由框架每帧从节点树推导：
+
+```go
+// 模态：Tab/Shift+Tab 只在子树内循环；出现的当帧自动聚焦首项
+ui.Column(
+    ui.FormItem("邮箱", true, "", ui.Input("m-email", "", "", nil)),
+    ui.Button(ui.T("ui.dialog.ok"), onOK),
+).Trap()
+
+// roving tabindex：Tabs / 工具栏 / 单选组，整组只占一个 Tab 位
+ui.Row(tabItem("tab-a", "甲"), tabItem("tab-b", "乙"), tabItem("tab-c", "丙")).Rove("demo-tabs")
+```
+
+| 入口 | 作用 |
+| --- | --- |
+| `Trap` | 子树成为焦点陷阱，嵌套时取最内层 |
+| `Rove` | 直接子节点组为 roving 组，方向键在组内循环（焦点在文本编辑控件时不拦截）|
+| `RoveActive` / `SetRoveActive` | 读 / 写组当前活动项（点击某项后同步键盘活动项）|
+| `ResetRoveState` | 页面整体切换时清空全部组状态 |
+| `FocusNext` / `FocusPrev` | 代码里主动移动焦点 |
+
+无障碍：`A11ySnapshot` 导出整棵可访问树，供读屏桥接使用；静态检查用 `A11yLint`。
     Message string
     Stack   string
     File    string      // 落盘路径

@@ -124,6 +124,35 @@ ui.PropResetButton("props", "size", "13", onChange)   // ↺ 重置为默认值
 
 ## 7. 表单页骨架（可直接抄）
 
+
+## 9. 表单校验（Rule / FormState）
+
+`ValidateRequired` / `ValidateMinLen` / `ValidateEmail` 是「一个函数校验一个值」；
+字段一多，就需要一个地方集中管理「值 + 规则 + 错误」。`FormState` 就是那个地方：
+
+```go
+form := ui.NewFormState()
+form.Rule("email", ui.Rules(ui.RequiredRule("邮箱"), ui.EmailRule("邮箱")))
+form.Rule("pwd", ui.Rules(ui.RequiredRule("密码"), ui.MinLenRule(8, "密码")))
+
+col := ui.Column(
+    form.Field("email", "邮箱", "you@example.com", true), // 标签 + 输入框 + 错误文案
+    form.Field("pwd", "密码", "至少 8 位", true),
+    ui.Button("提交", func() {
+        form.Submit(func(v map[string]string) { login(v["email"], v["pwd"]) })
+    }),
+)
+```
+
+| 入口 | 说明 |
+| --- | --- |
+| `Rule` / `Rules` | 规则类型与组合；组合时返回第一条错误 |
+| `RequiredRule` `MinLenRule` `MaxLenRule` `EmailRule` | 常用规则，文案中文化 |
+| `PatternRule` `NumberRule` `RangeRule` `PhoneRule` | 正则 / 数字 / 范围 / 手机号，空值交给 `RequiredRule` |
+| `Validate` / `ValidateField` | 全量校验 / 单字段校验（失焦时用）|
+| `Submit` | 校验通过才执行回调，回调拿到值快照 |
+| `Bind` / `Field` | 接到 `Input` 的 onChange / 渲染带错误的表单项 |
+| `ValidateOnChange` | 默认关闭（提交时统一校验），打开后每次 `Set` 立刻重算 |
 ```go
 func formPage() *ui.Node {
     return ui.Column(
