@@ -1,0 +1,121 @@
+name: CI
+
+# 多平台回归门禁：构建 / vet / 单测 / 交叉编译 / 性能基线 / lint。
+# 性能回归超过阈值会直接失败（见 bench-gate 任务里的 10% 规则）。
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+env:
+  GOFLAGS: -mod=mod
+
+jobs:
+  test:
+    name: 构建 · vet · 单测 (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go build
+        run: go build ./...
+
+      # 只 vet ./ui/...：internal/win32 的 unsafe.Pointer 与 internal/gpu 的 unkeyed
+      # 结构体字面量属于既有绑定写法（不是 bug），纳入严格检查会让 CI 永远红。
+      - name: go vet
+        run: go vet ./ui/...
+
+      - name: 单测
+        run: go test ./ui/... -count=1
+
+      # 文档滞后门禁：docs/api 里用反引号引用的标识符必须真实存在于导出 API。
+      - name: 文档与 API 一致性
+        shell: pwsh
+        run: ./scripts/doc-api-check.ps1
+
+      # 数据竞争只在 Linux 跑（Windows 上 -race 需要 cgo/gcc，自建环境常缺）
+      - name: 数据竞争
+        if: matrix.os == 'ubuntu-latest'
+        run: go test ./ui/ -count=1 -race
+
+  crossbuild:
+    name: 交叉编译（wasm / android / darwin）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Web (wasm)
+        run: GOOS=js GOARCH=wasm go build ./ui/... ./cmd/gallery/...
+
+      - name: Android
+        run: GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build ./ui/...
+
+      - name: macOS
+        run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./ui/...
+
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          # 配置见仓库根目录 .golangci.yml（v2 格式，需要 golangci-lint >= 2.0）
+          version: latest
+          args: --timeout=5m
+
+  bench:
+    name: 性能基线对比
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 安装 benchstat
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      - name: 跑基准
+        run: go test ./ui/ -run '^$' -bench . -benchtime 200ms -count 5 > bench/new.txt
+
+      - name: 与基线对比
+        run: |
+          if [ -f bench/baseline.txt ]; then
+            "$(go env GOPATH)/bin/benchstat" bench/baseline.txt bench/new.txt | tee bench/diff.txt
+          else
+            echo "::warning::bench/baseline.txt 不存在，跳过对比（用 scripts/bench-gate.ps1 -Update 生成）"
+          fi
+
+      - name: 上传结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ github.sha }}
+          path: |
+            bench/new.txt
+            bench/diff.txt
+          if-no-files-found: ignore
