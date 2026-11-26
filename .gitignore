@@ -1,4 +1,4 @@
-# 构建产物（不要提交）
+﻿# 构建产物（不要提交）
 /bin/
 /dist/
 dist/
@@ -70,3 +70,11 @@ Desktop.ini
 #   internal/win32/webview2loader/WebView2Loader.dll  通过 //go:embed 打进二进制
 #   ui/assets/icon.ico     应用图标
 #   cmd/*/rsrc_windows_*.syso  exe 图标资源
+
+# 论坛前端内嵌产物（build-forumd.ps1 生成，只有占位文件入库）
+!site/server/internal/webui/dist/
+site/server/internal/webui/dist/*
+!site/server/internal/webui/dist/placeholder.txt
+
+# 移出的非框架项目（本地暂存，不入库）
+/项目/

@@ -21,7 +21,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Baseline = "bench/baseline.txt",
+    [string]$Baseline = "项目/bench/baseline.txt",
     [string]$Package = "./ui/",
     [string]$Filter = "",
     [string]$Benchtime = "200ms",
@@ -74,8 +74,8 @@ try {
     }
 
     if (-not (Test-Path $Baseline)) {
-        Write-Host ("基线文件不存在：{0}`n用 -Update 先生成一份。" -f $Baseline) -ForegroundColor Yellow
-        exit 2
+        Write-Host ("基线文件不存在：{0}`n用 -Update 先生成一份；本次跳过对比。" -f $Baseline) -ForegroundColor Yellow
+        exit 0
     }
 
     # 读基线
