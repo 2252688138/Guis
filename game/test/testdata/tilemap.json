@@ -1,0 +1,40 @@
+{
+  "width": 4,
+  "height": 3,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "layers": [
+    {
+      "type": "tilelayer",
+      "name": "ground",
+      "width": 4,
+      "height": 3,
+      "visible": true,
+      "data": [1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1]
+    },
+    {
+      "type": "tilelayer",
+      "name": "walls",
+      "width": 4,
+      "height": 3,
+      "visible": true,
+      "data": [0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0]
+    },
+    {
+      "type": "objectgroup",
+      "name": "meta",
+      "objects": []
+    }
+  ],
+  "tilesets": [
+    {
+      "firstgid": 1,
+      "image": "tiles.png",
+      "imagewidth": 64,
+      "imageheight": 16,
+      "tilewidth": 16,
+      "tileheight": 16,
+      "columns": 4
+    }
+  ]
+}
