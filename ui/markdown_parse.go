@@ -1053,7 +1053,7 @@ func parseInline(s string) []mdInline {
 			if i+1 < len(rs) && rs[i+1] == '[' {
 				if text, href, next, ok := mdParseLink(rs, i+1); ok {
 					flush()
-					out = append(out, mdInline{Text: text, Link: true, Href: href})
+					out = append(out, mdInline{Text: mdLinkText(text, href), Link: true, Href: href})
 					i = next
 					continue
 				}
@@ -1071,7 +1071,7 @@ func parseInline(s string) []mdInline {
 			}
 			if text, href, next, ok := mdParseLink(rs, i); ok {
 				flush()
-				out = append(out, mdInline{Text: text, Link: true, Href: href})
+				out = append(out, mdInline{Text: mdLinkText(text, href), Link: true, Href: href})
 				i = next
 				continue
 			}
@@ -1225,6 +1225,47 @@ func mdParseLink(rs []rune, open int) (text, href string, next int, ok bool) {
 		raw = raw[:i]
 	}
 	return text, strings.TrimSpace(raw), end, true
+}
+
+// mdIsURLText 文本本身是否是一条 URL（http/https/file）。
+func mdIsURLText(s string) bool {
+	low := strings.ToLower(strings.TrimSpace(s))
+	return strings.HasPrefix(low, "file://") || strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://")
+}
+
+// mdLinkLabel 把 file:// 本地路径压成「文件名(#锚点)」；其它链接原样返回。
+func mdLinkLabel(u string) string {
+	low := strings.ToLower(u)
+	if !strings.HasPrefix(low, "file://") {
+		return u
+	}
+	path := u[len("file://"):]
+	anchor := ""
+	if i := strings.IndexAny(path, "?#"); i >= 0 {
+		anchor = path[i:]
+		path = path[:i]
+	}
+	path = strings.ReplaceAll(path, "\\", "/")
+	if base := path[strings.LastIndex(path, "/")+1:]; base != "" {
+		return base + anchor
+	}
+	return u
+}
+
+// mdLinkText 整理链接的可见文本：空文本用 URL 兜底（避免链接整段消失）；
+// 文本本身就是 URL（尤其 file:// 长路径）时折叠成文件名，完整地址仍留在 Href/tooltip。
+func mdLinkText(text, href string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		text = href
+	}
+	if !mdIsURLText(text) {
+		return text
+	}
+	if strings.EqualFold(text, href) || strings.HasPrefix(strings.ToLower(text), "file://") {
+		return mdLinkLabel(text)
+	}
+	return text
 }
 
 // mdReadTag 读取 <tag ...> 标签名与结束下标。

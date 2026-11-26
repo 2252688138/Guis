@@ -88,6 +88,9 @@ type Renderer struct {
 	// 当前 scissor 区域（避免重复设置触发无意义的批次切分）
 	clipCur geom.Rect
 	clipOn  bool
+	// anim 组件动画变换栈（见 renderer_anim.go）：压栈后整棵子树的顶点会一起
+	// 缩放 / 平移 / 淡出，ui 层给任意节点绑定动画效果靠的就是它。
+	anim animStack
 	// targetFBO 呈现目标（0 = 窗口默认帧缓冲；>0 = 离屏目标，DComp 合成用）
 	targetFBO uint32
 	// drawFBO 本帧实际绑定的绘制目标：开启超采样时指向离屏 RT，否则同 targetFBO
@@ -334,6 +337,29 @@ func (r *Renderer) Scale() float32 { return r.scale }
 // PixelSize 当前渲染目标像素尺寸（含超采样倍率）。
 func (r *Renderer) PixelSize() (int, int) { return int(r.pw), int(r.ph) }
 
+// ReadPixels 从当前绘制目标读回 RGBA8 像素（已经翻成左上原点、行优先）。
+//
+// 供应用内截图、像素级回归测试使用；调用方需保证 GL 上下文当前。
+// 读不到时返回 nil（无 GL 上下文 / 平台未实现）。
+func (r *Renderer) ReadPixels() ([]byte, int, int) {
+	w, h := int(r.pw), int(r.ph)
+	if w <= 0 || h <= 0 {
+		return nil, 0, 0
+	}
+	buf := make([]byte, w*h*4)
+	glReadPixels(0, 0, int32(w), int32(h), GL_RGBA, GL_UNSIGNED_BYTE, buf)
+	// GL 原点在左下：逐行翻转成左上，存图与比对才符合直觉
+	row := w * 4
+	tmp := make([]byte, row)
+	for y := 0; y < h/2; y++ {
+		top, bottom := y*row, (h-1-y)*row
+		copy(tmp, buf[top:top+row])
+		copy(buf[top:top+row], buf[bottom:bottom+row])
+		copy(buf[bottom:bottom+row], tmp)
+	}
+	return buf, w, h
+}
+
 // TextureBudgetFactor 显存预算倍率：按「窗口像素面积 / 1280×800」缩放，限定 0.5~1.5。
 //
 // 旧实现把图片 / 图表纹理预算写成固定值（32MB / 24MB）：小窗口时明显偏多，
@@ -553,6 +579,8 @@ func (r *Renderer) Begin(fill Paint) {
 	r.clipSaved = r.clipSaved[:0]
 	r.clipOn = false
 	r.clipCur = geom.Rect{}
+	// 动画变换栈按帧复位：上一帧万一有未配对的 PushAnim（异常返回）也不会污染本帧
+	r.anim.reset()
 	// 开启超采样时整帧画进高分辨率离屏目标，End 之后由 Resolve 降采样呈现
 	r.drawFBO = r.targetFBO
 	if r.ensureSSAA() {
@@ -892,6 +920,12 @@ func (r *Renderer) DeleteTexture(t *Texture) {
 	if t == nil || t.ID == 0 {
 		return
 	}
+	if t.External {
+		// 外部纹理所有权不在本渲染器（3D 引擎的 FBO 颜色附件等），只断开引用。
+		t.ID = 0
+		r.curTexID = 0
+		return
+	}
 	id := t.ID
 	glDeleteTextures(1, &id)
 	t.ID = 0
@@ -1017,6 +1051,13 @@ func (r *Renderer) appendQuad(rs geom.Rect, rad [4]float32, c1, c2 Paint, feathe
 	hx, hy := rs.W/2, rs.H/2
 	cx, cy := rs.X+hx, rs.Y+hy
 	s := r.scale
+	// 组件动画：中心与顶点整体走仿射（缩放 / 旋转 / 平移），局部的半尺寸与圆角
+	// 半径保持原值 —— 这样 SDF 在未变换的局部空间里算，圆角随整体一起等比变化。
+	aa := r.animAlpha()
+	animOn := r.anim.on
+	if animOn {
+		cx, cy = r.anim.apply(cx, cy)
+	}
 
 	grad := c2.A >= 0
 	var dx, dy, den float32
@@ -1055,9 +1096,13 @@ func (r *Renderer) appendQuad(rs geom.Rect, rad [4]float32, c1, c2 Paint, feathe
 		lx, ly := csx[k]*hx, csy[k]*hy
 		v := corner(lx, ly)
 		o := k * floatsShapeVert
-		d[o+0], d[o+1] = cx+lx, cy+ly
+		px, py := lx, ly
+		if animOn {
+			px, py = r.anim.applyLinear(lx, ly)
+		}
+		d[o+0], d[o+1] = cx+px, cy+py
 		d[o+2], d[o+3] = lx, ly
-		d[o+4], d[o+5], d[o+6], d[o+7] = v.R, v.G, v.B, v.A
+		d[o+4], d[o+5], d[o+6], d[o+7] = v.R, v.G, v.B, v.A*aa
 		// 顶点色 2 的 alpha 固定 -1：告诉着色器“没有第二颜色”，不走两色 mix
 		d[o+8], d[o+9], d[o+10], d[o+11] = 0, 0, 0, -1
 		d[o+12], d[o+13] = hx, hy
@@ -1086,6 +1131,8 @@ func (r *Renderer) pushText(t TextRun) {
 	if sc != 0 {
 		inv = 1 / sc
 	}
+	// 组件动画的透明度乘子（未开启动画时为 1）
+	aa := r.animAlpha()
 
 	for i := range glyphs {
 		g := &glyphs[i]
@@ -1100,6 +1147,8 @@ func (r *Renderer) pushText(t TextRun) {
 		y0 := float32(math.Round(float64(baseY + g.Top)))
 		x1 := x0 + g.W
 		y1 := y0 + g.H
+		// 组件动画：字形就是一张纹理四边形，六个顶点统一走仿射变换（缩放 / 旋转 /
+		// 平移），因此文字能跟随容器的缩放、旋转与淡入一起变化（见下方 vxs/vys）。
 
 		if r.textN+6 > maxVerts {
 			r.flush()
@@ -1119,11 +1168,16 @@ func (r *Renderer) pushText(t TextRun) {
 		vys := [6]float32{y0, y0, y1, y0, y1, y1}
 		us := [6]float32{g.U0, g.U1, g.U1, g.U0, g.U1, g.U0}
 		vs := [6]float32{g.V1, g.V1, g.V0, g.V1, g.V0, g.V0}
+		if r.anim.on {
+			for k := 0; k < 6; k++ {
+				vxs[k], vys[k] = r.anim.apply(vxs[k], vys[k])
+			}
+		}
 		for k := 0; k < 6; k++ {
 			o := k * floatsTextVert
 			d[o+0], d[o+1] = vxs[k]*inv, vys[k]*inv
 			d[o+2], d[o+3] = us[k], vs[k]
-			d[o+4], d[o+5], d[o+6], d[o+7] = c.R, c.G, c.B, c.A
+			d[o+4], d[o+5], d[o+6], d[o+7] = c.R, c.G, c.B, c.A*aa
 			d[o+8] = mode
 		}
 		r.textN += 6

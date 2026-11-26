@@ -33,6 +33,7 @@
 //	pages/case_layouts.go   布局实验室        pages/case_dashboard.go 仪表盘
 //	pages/case_charts.go    图表              pages/case_markdown.go  Markdown 渲染
 //	pages/case_system.go    系统能力          pages/case_webview.go   WebView 浏览器
+//	pages/case_anim.go     组件动画（任意节点绑定出场 / 呼吸 / 抖动 / 弹跳）
 //	pages/case_office.go    办公文档（Excel / Word / PDF 读写与渲染）
 //
 // 登录 / 注册等业务页面已移除：本程序只做组件演示，不再模拟登录流程。

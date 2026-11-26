@@ -166,6 +166,25 @@ if err == nil {
 > 80×24 一屏只有几十条绘制指令；宽字符（CJK/Emoji）占两格，尾格带 `WideTail` 标记不参与绘制。
 > 光标遵循 xterm 行为：聚焦实心块 / 失焦空心框，`DECSCUSR` 可切竖线、下划线。
 
+## 5.6 自绘画布（Canvas）
+
+| 能力 | API | 说明 |
+|---|---|---|
+| 画布节点 | `NewCanvasState(key)` / `Canvas(st, shapes, CanvasOptions{W,H,BG})` | `Kind=KCanvas`；声明式形状光栅成纹理后走 `DrawImage` 合成（与 `KViewport3D` 同链路） |
+| 形状 | `CanvasShape{Kind: rect / roundrect / line / polyline / polygon / circle / ring / arc}` | 支持 `Fill` / `Stroke` / `StrokeW` / `Opacity`；颜色 `#rgb` / `#rrggbb` / `#rrggbbaa` / 具名色 |
+| 增量重绘 | 形状指纹 | 形状集合不变时复用上次像素，静态图形零重绘；`Invalidate()` 强制重绘 |
+| 脚本 / 描述层 | `ui.canvas{...}` / `{"type":"canvas"}` | 见 `docs/script-lua.md` 的 Canvas 章节 |
+| 纹理上传 | 需要活动渲染器 | 离屏（无 App）时只做光栅，不上传纹理（便于单测） |
+| 限制 | — | 光栅器不带字体：文字请用相邻的 `ui.text` / `ui.richtext` 叠加 |
+
+```go
+st := ui.NewCanvasState("board")
+node := ui.Canvas(st, []ui.CanvasShape{
+    {Kind: "rect", X: 12, Y: 12, W: 120, H: 48, R: 10, Fill: "#4c8dff"},
+    {Kind: "ring", CX: 200, CY: 60, Radius: 34, Stroke: "#4cd964", StrokeW: 6},
+}, ui.CanvasOptions{W: 320, H: 180, BG: "#101830"})
+```
+
 ## 6. 已知限制
 
 - 拖入仍走 `WM_DROPFILES`（没有 dragenter/dragover，因此**没有拖入悬停高亮**）；

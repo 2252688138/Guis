@@ -95,6 +95,8 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "${COPYRIGHT}"
 Var InstallAll     ; 1 = 为所有用户安装，0 = 仅当前用户
 Var SkipScope      ; 1 = 命令行已指定范围，跳过选择页
 Var IsAdmin        ; 1 = 当前进程已提权
+Var CachedUserLocalAppData ; 真实用户的 %LOCALAPPDATA%。SetShellVarContext all 之后 $LOCALAPPDATA
+                     ; 会变成 %ProgramData%，默认目录比较必须用这个提前缓存的值。
 Var ScopeAllRadio
 Var ScopeMeRadio
 Var ScopeDialog
@@ -136,6 +138,27 @@ Function SetScope
     ${EndIf}
 FunctionEnd
 
+; ---------------- 快捷方式去重 ----------------
+; DeleteShortcutsInContext：删除「当前 shell 上下文」里的程序与卸载快捷方式。
+; current 上下文对应 %USERPROFILE%\Desktop（跟随桌面重定向），all 对应 %PUBLIC%\Desktop，
+; 两个目录的图标会同时显示在桌面上，所以换过安装范围后必须两边都清一遍。
+Function DeleteShortcutsInContext
+    Delete "$DESKTOP\${PRODUCT}.lnk"
+    Delete "$SMPROGRAMS\${PRODUCT}\${PRODUCT}.lnk"
+    Delete "$SMPROGRAMS\${PRODUCT}\卸载 ${PRODUCT}.lnk"
+    RMDir "$SMPROGRAMS\${PRODUCT}"
+FunctionEnd
+
+; PurgeAllShortcuts：两种安装范围下的旧快捷方式全部清掉，结束后恢复当前范围上下文。
+; 删除公共桌面/公共开始菜单需要管理员，权限不足时静默失败，不影响安装继续。
+Function PurgeAllShortcuts
+    SetShellVarContext current
+    Call DeleteShortcutsInContext
+    SetShellVarContext all
+    Call DeleteShortcutsInContext
+    Call SetScope
+FunctionEnd
+
 ; DefaultDirForScope：当前范围的默认安装目录
 Function DefaultDirForScope
     ${If} $InstallAll == 1
@@ -145,7 +168,7 @@ Function DefaultDirForScope
             StrCpy $R9 "$PROGRAMFILES\${PRODUCT}"
         ${EndIf}
     ${Else}
-        StrCpy $R9 "$LOCALAPPDATA\Programs\${PRODUCT}"
+        StrCpy $R9 "$CachedUserLocalAppData\Programs\${PRODUCT}"
     ${EndIf}
 FunctionEnd
 
@@ -164,7 +187,7 @@ Function SyncDefaultDir
         StrCpy $R9 $R6
     ${EndIf}
 
-    StrCpy $R8 "$LOCALAPPDATA\Programs\${PRODUCT}"
+    StrCpy $R8 "$CachedUserLocalAppData\Programs\${PRODUCT}"
     ${If} ${RunningX64}
         StrCpy $R7 "$PROGRAMFILES64\${PRODUCT}"
     ${Else}
@@ -190,6 +213,8 @@ Function ElevateForAllUsers
 FunctionEnd
 
 Function .onInit
+    ; 必须在 SetShellVarContext all 之前缓存（all 上下文下 $LOCALAPPDATA == %ProgramData%）
+    StrCpy $CachedUserLocalAppData "$LOCALAPPDATA"
     StrCpy $SkipScope 0
     Call CheckAdmin
     ; 默认范围：已提权 → 所有用户；普通双击 → 仅当前用户
@@ -200,6 +225,24 @@ Function .onInit
     ${EndIf}
 
     ${GetParameters} $R0
+
+    ; /cleanshortcuts [/cleanall]：只清理旧快捷方式然后退出。
+    ; 主流程末尾发现「非管理员删不掉的公共桌面旧图标」时会带 /cleanall 提权重入本程序。
+    ; 必须放在下面的提权重入判断之前，否则提权实例会再次重入。
+    ClearErrors
+    ${GetOptions} $R0 "/cleanshortcuts" $R1
+    ${IfNot} ${Errors}
+        ClearErrors
+        ${GetOptions} $R0 "/cleanall" $R2
+        ${IfNot} ${Errors}
+            SetShellVarContext all
+        ${Else}
+            SetShellVarContext current
+        ${EndIf}
+        Call DeleteShortcutsInContext
+        Quit
+    ${EndIf}
+
     ClearErrors
     ${GetOptions} $R0 "/currentuser" $R1
     ${IfNot} ${Errors}
@@ -285,6 +328,11 @@ Section "主程序" SEC_MAIN
     ; 只切换上下文，不动 $INSTDIR —— 保证目录页选择的自定义路径生效
     Call SetScope
 
+    ; 重装/升级：先清掉两种安装范围下的旧快捷方式。否则换过范围后
+    ; （仅在当前用户装过 → 再为所有用户装，或反之）新旧两份同名 .lnk 会同时
+    ; 出现在桌面上，看起来就是「桌面有两个快捷键」。
+    Call PurgeAllShortcuts
+
     SetOutPath "$INSTDIR"
     File "/oname=${APPEXE}" "${SRC_EXE}"
 
@@ -334,6 +382,20 @@ Section "主程序" SEC_MAIN
     CreateShortCut "$SMPROGRAMS\${PRODUCT}\卸载 ${PRODUCT}.lnk" "$INSTDIR\uninstall.exe"
     CreateShortCut "$DESKTOP\${PRODUCT}.lnk" "$INSTDIR\${APPEXE}" "" "$INSTDIR\${APPEXE}" 0
 
+    ; 「公共桌面」里的旧快捷方式非管理员删不掉（见 PurgeAllShortcuts），
+    ; 装完再确认一次：仍有残留就带 /cleanall 提权重入本程序，只清公共桌面那一份。
+    ${If} $InstallAll == 0
+    ${AndIf} $IsAdmin == 0
+    ${AndIfNot} ${Silent}
+        SetShellVarContext all
+        StrCpy $R6 "$DESKTOP\${PRODUCT}.lnk"
+        Call SetScope
+        ${If} ${FileExists} "$R6"
+            MessageBox MB_ICONINFORMATION|MB_OK "桌面上还有「为所有用户安装」留下的旧快捷方式，清除它需要管理员权限，即将请求提权。"
+            ExecShell "runas" "$EXEPATH" "/cleanshortcuts /cleanall"
+        ${EndIf}
+    ${EndIf}
+
     ; 控制面板「应用和功能」条目
     WriteRegStr SHCTX "${UNINST_KEY}" "DisplayName" "${PRODUCT}"
     WriteRegStr SHCTX "${UNINST_KEY}" "DisplayVersion" "${VERSION}"
@@ -346,7 +408,13 @@ Section "主程序" SEC_MAIN
     WriteRegDWORD SHCTX "${UNINST_KEY}" "NoModify" 1
     WriteRegDWORD SHCTX "${UNINST_KEY}" "NoRepair" 1
 
-    ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
+    ; 「应用和功能」里的大小只取编译期统计的 section 大小（安装器真正写入的程序文件，
+    ; 几十 MB）。不要再用 ${GetSize} "$INSTDIR" 递归统计整个安装目录：程序运行后会在
+    ; 安装目录里下载 tools 缓存（实测 4.8 万文件 / 6.5 GB），递归统计会把 EstimatedSize
+    ; 算成 6 GB 多；FileFunc.nsh 的 ${GetSize} 还会自己 DetailPrint 一行
+    ; "Size: 6404038 Kb  Files: 43550  Folders: 4431"，
+    ; 用户看到这行就以为安装包有 6 GB —— 其实安装包只有 20 多 MB。
+    SectionGetSize ${SEC_MAIN} $0
     IntFmt $0 "0x%08X" $0
     WriteRegDWORD SHCTX "${UNINST_KEY}" "EstimatedSize" "$0"
 
@@ -359,10 +427,22 @@ Section "主程序" SEC_MAIN
     ${Else}
         WriteRegStr SHCTX "${APP_KEY}" "Scope" "current"
     ${EndIf}
+
+    ; 另一种范围的旧卸载记录一并清掉，否则「应用和功能」里会出现两条同名项
+    ; （换范围重装后 HKCU / HKLM 各留一份）。权限不足时静默失败。
+    ${If} $InstallAll == 1
+        DeleteRegKey HKCU "${UNINST_KEY}"
+        DeleteRegKey HKCU "${APP_KEY}"
+    ${Else}
+        DeleteRegKey HKLM "${UNINST_KEY}"
+        DeleteRegKey HKLM "${APP_KEY}"
+    ${EndIf}
 SectionEnd
 
 ; ---------------- 卸载 ----------------
 Function un.onInit
+    ; 同 .onInit：上下文切换前先缓存真实用户的 LOCALAPPDATA
+    StrCpy $CachedUserLocalAppData "$LOCALAPPDATA"
     ${If} ${RunningX64}
         SetRegView 64
     ${EndIf}
@@ -389,7 +469,7 @@ Function un.onInit
             StrCpy $INSTDIR $0
         ${EndIf}
         ${If} $INSTDIR == ""
-            StrCpy $INSTDIR "$LOCALAPPDATA\Programs\${PRODUCT}"
+            StrCpy $INSTDIR "$CachedUserLocalAppData\Programs\${PRODUCT}"
         ${EndIf}
     ${EndIf}
 FunctionEnd
@@ -402,10 +482,24 @@ Section "Uninstall"
     Delete "$INSTDIR\uninstall.exe"
     RMDir /r "$INSTDIR"
 
+    ; 两种安装范围下的快捷方式都清掉（换过范围时另一个范围会各留一份）。
+    ; 卸载器的 Call 只能调 un.* 函数，所以这里就地展开两遍 delete。
+    SetShellVarContext current
+    Delete "$DESKTOP\${PRODUCT}.lnk"
     Delete "$SMPROGRAMS\${PRODUCT}\${PRODUCT}.lnk"
     Delete "$SMPROGRAMS\${PRODUCT}\卸载 ${PRODUCT}.lnk"
     RMDir "$SMPROGRAMS\${PRODUCT}"
+    SetShellVarContext all
     Delete "$DESKTOP\${PRODUCT}.lnk"
+    Delete "$SMPROGRAMS\${PRODUCT}\${PRODUCT}.lnk"
+    Delete "$SMPROGRAMS\${PRODUCT}\卸载 ${PRODUCT}.lnk"
+    RMDir "$SMPROGRAMS\${PRODUCT}"
+    ; 恢复本范围上下文，保证下面 DeleteRegKey SHCTX 删的是正确视图
+    ${If} $InstallAll == 1
+        SetShellVarContext all
+    ${Else}
+        SetShellVarContext current
+    ${EndIf}
 
     DeleteRegKey SHCTX "${UNINST_KEY}"
     DeleteRegKey SHCTX "${APP_KEY}"
@@ -419,3 +513,4 @@ Section "Uninstall"
         DeleteRegKey HKLM "${APP_KEY}"
     ${EndIf}
 SectionEnd
+

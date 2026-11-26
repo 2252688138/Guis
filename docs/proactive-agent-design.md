@@ -1024,3 +1024,8 @@ UX 约束：只弹一次轻提示、不抢焦点、不自动切路由；执行�
 3. 步骤：UI 线程建会话「主动自检 MM-DD HH:MM」→ 写入自检报告（统计 + 待处理建议 + 行动指令）作为用户消息 + 助手占位 → 后台跑一轮 `agent.Loop`（模型 + 工具，`runBlocking` 走统一并发额度）→ UI 线程收尾。
 4. 约束：不切换用户当前会话、不抢焦点；权限沿用当前 Perm 设置，但审批钩子只放行 `Risk == ""` 的低风险操作，带风险提示的一律拒绝；同一时刻只有一轮。
 
+**能力建设（技能 / MCP）**：
+
+- 提示词里固定带【能力建设】段：同类步骤重复 ≥2 次或工具不合手时，写成技能（`<工作区>/.deepseek/skills/<kebab-名称>/SKILL.md`，frontmatter 含 name/description）并用 `skill_operation list` 验证；需要外部服务才登记 MCP（先列服务名 + 凭据清单给用户确认，不自己写 server）；禁止为此新增 Go 代码工具。
+- `proactive/engine.go` 每 `capabilityEvery`（8 轮 ≈ 4 小时）插一条 `kind=capability` 的「能力盘点」提案（`ModeListOnly`，只出建议不自动执行），保证收件箱里定期出现能力建设提示。
+

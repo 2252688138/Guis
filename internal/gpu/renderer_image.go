@@ -66,6 +66,13 @@ func (r *Renderer) DrawImage(im Image) {
 	rs := im.Rect
 	hx, hy := rs.W/2, rs.H/2
 	cx, cy := rs.X+hx, rs.Y+hy
+	// 组件动画：中心走仿射（缩放 / 旋转 / 平移）+ 透明度乘子（未开启动画时退化为原值）。
+	// 局部的 hx, hy 与四个角的局部坐标保持原样，圆角在未变换的局部空间里算。
+	animOn := r.anim.on
+	if animOn {
+		cx, cy = r.anim.apply(cx, cy)
+		tint.A *= r.anim.a
+	}
 	// 纹理坐标：图像数据首行为顶部，GL v=0 为底部，故上下翻转。
 	// 纹理坐标：图像数据首行为顶部（GL v=0 为底部），屏幕 y 向下，
 	// 所以屏幕顶部取 v=0 才是正立；Rot 再按 90° 顺时针旋转 UV。
@@ -84,8 +91,12 @@ func (r *Renderer) DrawImage(im Image) {
 		case 3: // 270°（90° 逆时针）
 			u, v = 1-v, u
 		}
+		px, py := cs[i][0], cs[i][1]
+		if animOn {
+			px, py = r.anim.applyLinear(px, py)
+		}
 		r.imgData = append(r.imgData,
-			cx+cs[i][0], cy+cs[i][1],
+			cx+px, cy+py,
 			u, v,
 			tint.R, tint.G, tint.B, tint.A,
 			cs[i][0], cs[i][1],

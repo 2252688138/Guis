@@ -237,6 +237,22 @@ func setAttr(n *Node, key, val string) error {
 		n.Icon = val
 	case "onclick", "click", "action":
 		n.OnClick = val
+	case "onchange", "change":
+		n.OnChange = val
+	case "onsubmit", "submit":
+		n.OnSubmit = val
+	case "value":
+		n.Value = val
+	case "placeholder", "hint":
+		n.Placeholder = val
+	case "checked", "on":
+		b, err := strconv.ParseBool(strings.TrimSpace(val))
+		if err != nil {
+			return fmt.Errorf("属性 %s 需要 true/false，收到 %q", key, val)
+		}
+		n.Checked = b
+	case "pct", "progress":
+		return setNum(&n.Pct, num)
 	case "w", "width":
 		return setNum(&n.W, num)
 	case "h", "height":

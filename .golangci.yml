@@ -31,6 +31,9 @@ linters:
       - internal/uikit
       - internal/objc
       - internal/android
+      # OpenGL 函数表通过 wglGetProcAddress 返回 uintptr，读回字符串必须转指针，
+      # govet 的 unsafeptr 会对此误报（与手写 syscall 层同一类）。
+      - game/gpu_gl
       - \.pb\.go$
 
 issues:

@@ -96,6 +96,14 @@ func glTexImage2D(target uint32, level, internalFormat int32, w, h int32, format
 	}
 	win32.GlTexImage2D(target, level, internalFormat, w, h, 0, format, typ, p)
 }
+// glReadPixels 从当前绘制目标读回 RGBA 像素（原点在左下）。
+func glReadPixels(x, y, w, h int32, format, typ uint32, pixels []byte) {
+	if len(pixels) == 0 {
+		return
+	}
+	win32.GlReadPixels(x, y, w, h, format, typ, unsafe.Pointer(&pixels[0]))
+}
+
 func glTexSubImage2D(target uint32, level, x, y, w, h int32, format, typ uint32, pixels []byte) {
 	if len(pixels) == 0 {
 		return

@@ -168,6 +168,10 @@ func kindName(k Kind) string {
 		return "icon"
 	case KTerm:
 		return "term"
+	case KViewport3D:
+		return "viewport"
+	case KCanvas:
+		return "canvas"
 	}
 	return "box"
 }

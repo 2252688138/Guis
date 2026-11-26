@@ -306,7 +306,7 @@ func markStaticTree(n *Node) bool {
 	}
 	ok := true
 	switch n.Kind {
-	case KVideo, KWebView, KChart, KImage, KRichText, KTerm:
+	case KVideo, KWebView, KChart, KImage, KRichText, KTerm, KViewport3D, KCanvas:
 		ok = false
 	}
 	if ok && (n.Style.Animated || n.Style.BackdropBlur > 0 || n.Focus || len(n.anim) > 0) {
@@ -557,7 +557,7 @@ func nodeCacheableTree(n *Node) bool {
 		return true
 	}
 	switch n.Kind {
-	case KVideo, KWebView, KChart, KImage, KRichText, KTerm:
+	case KVideo, KWebView, KChart, KImage, KRichText, KTerm, KViewport3D, KCanvas:
 		return false
 	}
 	if n.Style.Animated || n.Style.BackdropBlur > 0 {

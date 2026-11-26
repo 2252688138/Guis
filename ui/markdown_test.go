@@ -189,6 +189,41 @@ func TestMarkdownLayoutSmoke(t *testing.T) {
 	}
 }
 
+func TestParseInlineLinkText(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		text string
+		href string
+	}{
+		{"裸 URL 当文本", "[file:///E:/gogui/cmd/deepseek/pages/composer_tooltip_test.go](file:///E:/gogui/cmd/deepseek/pages/composer_tooltip_test.go)",
+			"composer_tooltip_test.go", "file:///E:/gogui/cmd/deepseek/pages/composer_tooltip_test.go"},
+		{"带行号锚点", "[file:///E:/g/internal/gpu/renderer.go#L318](file:///E:/g/internal/gpu/renderer.go#L318)",
+			"renderer.go#L318", "file:///E:/g/internal/gpu/renderer.go#L318"},
+		{"正常文本不动", "[composer_tooltip_test.go](file:///E:/g/pages/composer_tooltip_test.go)",
+			"composer_tooltip_test.go", "file:///E:/g/pages/composer_tooltip_test.go"},
+		{"空文本兜底", "[](file:///E:/g/pages/font.go)", "font.go", "file:///E:/g/pages/font.go"},
+		{"远程链接保持", "[https://example.com/a](https://example.com/a)",
+			"https://example.com/a", "https://example.com/a"},
+	}
+	for _, c := range cases {
+		runs := parseInline(c.src)
+		var got *mdInline
+		for i := range runs {
+			if runs[i].Link {
+				got = &runs[i]
+				break
+			}
+		}
+		if got == nil {
+			t.Fatalf("%s: 没有解析出链接", c.name)
+		}
+		if got.Text != c.text || got.Href != c.href {
+			t.Errorf("%s: got text=%q href=%q, want text=%q href=%q", c.name, got.Text, got.Href, c.text, c.href)
+		}
+	}
+}
+
 func TestMarkdownHighlight(t *testing.T) {
 	lines := mdHighlight("go", "func main() {\n\t// hi\n\tx := \"str\"\n}")
 	if len(lines) != 4 {

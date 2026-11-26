@@ -6,6 +6,7 @@
 package ui
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"image"
@@ -165,6 +166,18 @@ func LoadGIF(path string) (*VideoClip, error) {
 	}
 	defer f.Close()
 	g, err := gif.DecodeAll(f)
+	if err != nil {
+		return nil, err
+	}
+	return GIFToClip(g)
+}
+
+// LoadGIFBytes 从内存字节解码 GIF 的全部画面（素材内嵌在二进制里时用，省掉落盘）。
+func LoadGIFBytes(data []byte) (*VideoClip, error) {
+	if len(data) == 0 {
+		return nil, errors.New("gif 数据为空")
+	}
+	g, err := gif.DecodeAll(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}

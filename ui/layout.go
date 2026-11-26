@@ -284,6 +284,25 @@ func measureNode(lc *layoutCtx, n *Node, c Constraints, parent *Node) {
 				contentH = t.MinH
 			}
 		}
+	case KCanvas:
+		// 画布：默认 320×180，显式尺寸由 Style 覆盖。
+		contentW, contentH = 320, 180
+		if cv := n.Canvas; cv != nil {
+			if w, h := cv.Size(); w > 0 && h > 0 {
+				contentW, contentH = float32(w), float32(h)
+			}
+		}
+	case KViewport3D:
+		// 3D 视口：默认 640×360，显式尺寸由 Style 覆盖。
+		contentW, contentH = 640, 360
+		if vp := n.Viewport; vp != nil && vp.opts != nil {
+			if vp.opts.Resolution[0] > 0 {
+				contentW = float32(vp.opts.Resolution[0])
+			}
+			if vp.opts.Resolution[1] > 0 {
+				contentH = float32(vp.opts.Resolution[1])
+			}
+		}
 	case KIcon:
 		// 图标：未显式给尺寸时按 18×18 绘制（IconSized 会显式设置，这里只是兜底）。
 		contentW, contentH = 18, 18

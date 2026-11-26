@@ -308,6 +308,16 @@ func glTexImage2D(target uint32, level, internalFormat int32, w, h int32, format
 		int(w), int(h), 0, int(format), int(typ), jsBytes(pixels))
 }
 
+// glReadPixels 从当前绘制目标读回 RGBA 像素（WebGL2 需要 Uint8Array 接收）。
+func glReadPixels(x, y, w, h int32, format, typ uint32, pixels []byte) {
+	if len(pixels) == 0 || !GLReady() {
+		return
+	}
+	u8 := js.Global().Get("Uint8Array").New(len(pixels))
+	glCall("readPixels", int(x), int(y), int(w), int(h), int(format), int(typ), u8)
+	js.CopyBytesToGo(pixels, u8)
+}
+
 func glTexSubImage2D(target uint32, level, x, y, w, h int32, format, typ uint32, pixels []byte) {
 	if len(pixels) == 0 {
 		return

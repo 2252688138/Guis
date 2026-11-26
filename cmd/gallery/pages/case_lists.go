@@ -65,6 +65,12 @@ func tablePage() *ui.Node {
 		padSection(suiteVListCard()),
 		padSection(suiteTableCard()),
 		padSection(suiteStatesCard()),
+		treeTableSection(),
+		transferSection(),
+		infiniteSection(),
+		sparklineSection(),
+		jsonViewerSection(),
+		popconfirmSection(),
 	).St(ui.St().GapOf(0))
 }
 

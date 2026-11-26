@@ -1128,3 +1128,45 @@ func (wv *WebView2) SendMouseInput(kind int, vkeys uint32, wheel int32, x, y int
 	p := pt32{X: x, Y: y}
 	comCall(comp, wvCompSendMouse, uintptr(kind), uintptr(vkeys), uintptr(uint32(wheel)), uintptr(unsafe.Pointer(&p)))
 }
+
+// ExecuteScriptAsync 执行 JS 并取回结果（result 是 WebView2 返回的 JSON 文本：
+// 脚本 `return 1+1` 得到 "2"，字符串结果带引号）。
+// 完成回调可能在任意线程触发，调用方需自行回主线程。
+func (wv *WebView2) ExecuteScriptAsync(js string, cb func(result string)) {
+	if wv == nil || js == "" {
+		if cb != nil {
+			cb("")
+		}
+		return
+	}
+	s, err := syscall.UTF16PtrFromString(js)
+	if err != nil {
+		if cb != nil {
+			cb("")
+		}
+		return
+	}
+	wv.mu.Lock()
+	core := wv.core
+	wv.mu.Unlock()
+	if core == 0 {
+		if cb != nil {
+			cb("")
+		}
+		return
+	}
+	var handler uintptr
+	handler = newWVCallback(func(this, errCode, result uintptr) uintptr {
+		out := ""
+		if result != 0 {
+			out = utf16PtrToString(result)
+		}
+		dropWVCallback(handler)
+		if cb != nil {
+			cb(out)
+		}
+		return 0
+	})
+	comCall(core, wvCoreExecuteScript, uintptr(unsafe.Pointer(s)), handler)
+	runtime.KeepAlive(s)
+}

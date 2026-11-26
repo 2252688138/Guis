@@ -71,6 +71,8 @@ type glFns struct {
 	DeleteTextures          func(int32, *uint32)
 	TexImage2D              func(uint32, int32, int32, int32, int32, int32, uint32, uint32, unsafe.Pointer)
 	TexSubImage2D           func(uint32, int32, int32, int32, int32, int32, uint32, uint32, unsafe.Pointer)
+	// ReadPixels 读回像素（截图 / 渲染回归用）；缺失时为空操作。
+	ReadPixels func(int32, int32, int32, int32, uint32, uint32, unsafe.Pointer)
 	TexParameteri           func(uint32, uint32, int32)
 	ActiveTexture           func(uint32)
 	PixelStorei             func(uint32, int32)
@@ -157,6 +159,7 @@ func InitGLProcs() int {
 	bind(&t.DeleteTextures, "glDeleteTextures")
 	bind(&t.TexImage2D, "glTexImage2D")
 	bind(&t.TexSubImage2D, "glTexSubImage2D")
+	bind(&t.ReadPixels, "glReadPixels")
 	bind(&t.TexParameteri, "glTexParameteri")
 	bind(&t.ActiveTexture, "glActiveTexture")
 	bind(&t.PixelStorei, "glPixelStorei")
@@ -414,6 +417,15 @@ func glTexImage2D(target uint32, level, internalFormat int32, w, h int32, format
 		p = unsafe.Pointer(&pixels[0])
 	}
 	f(target, level, internalFormat, w, h, 0, format, typ, p)
+}
+
+// glReadPixels 从当前绘制目标读回 RGBA 像素（原点在左下）。
+func glReadPixels(x, y, w, h int32, format, typ uint32, pixels []byte) {
+	f := fns().ReadPixels
+	if f == nil || len(pixels) == 0 {
+		return
+	}
+	f(x, y, w, h, format, typ, unsafe.Pointer(&pixels[0]))
 }
 
 func glTexSubImage2D(target uint32, level, x, y, w, h int32, format, typ uint32, pixels []byte) {

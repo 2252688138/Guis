@@ -15,6 +15,7 @@ package text
 
 import (
 	"fmt"
+	"math"
 	"image/color"
 	"os"
 	"strings"
@@ -829,10 +830,26 @@ func (f *Font) rasterizeEmoji(r rune) (*Glyph, bool) {
 		copy(dst[:bw*4], src[:bw*4])
 	}
 	f.markColorDirty(ox, oy, bw, bh)
-	g := f.finishGlyph(dim, true, ox, oy, bw, bh, fixed.Int26_6(adv*64), img.Left, img.Top)
+	g := f.finishGlyph(dim, true, ox, oy, bw, bh, fixed.Int26_6(adv*64), img.Left, emojiBaselineTop(f, bh, img.Top))
 	g.Color = true
 	return g, true
 }
+
+// emojiBaselineTop 把 Emoji 位图顶部换算成「相对文字基线」的偏移（设备像素，向上为负）。
+//
+// Segoe UI Emoji 的字形按「基线落在字身上部」绘制：19px 的 Emoji 实测墨迹跨基线
+// -16..+2.7，直接沿用它的基线，整枚 Emoji 就掉到行框底部（还溢出下行），
+// 与同排文字并排时看着永远贴着底边。这里改为把 Emoji 墨迹垂直居中到主字体的行框
+// （基线以上 Ascent、以下 Descent），与浏览器 / DirectWrite 的观感一致。
+// 取不到行高时退回原值。
+func emojiBaselineTop(f *Font, bh int, top int) int {
+	if f == nil || f.scale <= 0 || f.LineHeight <= 0 {
+		return top
+	}
+	h := float32(bh) / f.scale // 墨迹高度（逻辑像素）
+	return int(math.Round(float64((-f.Ascent + (f.LineHeight-h)/2) * f.scale)))
+}
+
 
 // allocCell 在图集中分配一块 bw×bh 区域（含 padding）。
 // 图集从 256² 起步，装不下逐级翻倍到 1024²；到顶后写满才清空重用。

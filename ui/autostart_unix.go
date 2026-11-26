@@ -163,25 +163,25 @@ func launchAgentPlist(t autoStartTarget) string {
 		`"http://www.apple.com/DTDs/PropertyList-1.0.dtd">` + "\n")
 	b.WriteString(`<plist version="1.0">` + "\n")
 	b.WriteString("<dict>\n")
-	b.WriteString("\t<key>Label</key>\n\t<string>" + xmlEscape(t.Name) + "</string>\n")
+	b.WriteString("\t<key>Label</key>\n\t<string>" + plistEscape(t.Name) + "</string>\n")
 	b.WriteString("\t<key>ProgramArguments</key>\n\t<array>\n")
-	b.WriteString("\t\t<string>" + xmlEscape(t.Exe) + "</string>\n")
+	b.WriteString("\t\t<string>" + plistEscape(t.Exe) + "</string>\n")
 	for _, a := range t.Args {
-		b.WriteString("\t\t<string>" + xmlEscape(a) + "</string>\n")
+		b.WriteString("\t\t<string>" + plistEscape(a) + "</string>\n")
 	}
 	b.WriteString("\t</array>\n")
 	b.WriteString("\t<key>RunAtLoad</key>\n\t<true/>\n")
 	// 用户登录后自启，不需要 KeepAlive（崩溃后不自动拉起，避免与手动退出打架）。
 	b.WriteString("\t<key>KeepAlive</key>\n\t<false/>\n")
 	if c := strings.TrimSpace(t.Comment); c != "" {
-		b.WriteString("\t<key>Comment</key>\n\t<string>" + xmlEscape(c) + "</string>\n")
+		b.WriteString("\t<key>Comment</key>\n\t<string>" + plistEscape(c) + "</string>\n")
 	}
 	b.WriteString("</dict>\n</plist>\n")
 	return b.String()
 }
 
-// xmlEscape plist 文本节点转义。
-func xmlEscape(s string) string {
+// plistEscape plist 文本节点转义。
+func plistEscape(s string) string {
 	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&apos;")
 	return r.Replace(s)
 }

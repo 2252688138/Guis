@@ -1,6 +1,6 @@
 # GUIS
 
-纯 Go、零 cgo 的跨平台自绘 GUI 框架。**一套 UI 代码**编译到 Windows / Linux / macOS / Web（Android / iOS 骨架已就位）；界面主体全部由 OpenGL 自绘（不依赖 WebView），另带可选的内嵌浏览器组件（系统 WebView2）；风格对齐现代 Web UI（深色、圆角、渐变、投影、flex 布局），样式可完全自定义。
+纯 Go、零 cgo 的跨平台自绘 GUI 框架。**一套 UI 代码**编译到 Windows / Linux / macOS / Web（Android / iOS 骨架已就位）；界面主体全部由 OpenGL 自绘（不依赖 WebView），另带可选的内嵌浏览器组件（Windows 走系统 WebView2、浏览器端走 `<iframe>`、其余平台降级为占位卡片 + 系统浏览器，四端同一套 API）；风格对齐现代 Web UI（深色、圆角、渐变、投影、flex 布局），样式可完全自定义。
 
 简体中文 ｜ [English](README.en.md)
 
@@ -443,6 +443,7 @@ guis/
 │   ├── node.go    声明式节点与构造器
 │   ├── style.go   样式 DSL
 │   └── debug.go   布局树打印
+├── httpc/         类 axios 的 HTTP 客户端（实例配置/拦截器/重试/进度/multipart/wasm 降级）
 ├── internal/
 │   ├── gpu/       GLSL 着色器、批处理、纹理、裁剪
 │   ├── text/      opentype 字形光栅化、图集、度量
@@ -667,6 +668,32 @@ _ = ui.SetAutoStart(false, spec)        // 关闭
 | Web / Android / iOS | — | `HasCap(ui.CapAutoStart)` 为假，`SetAutoStart` 返回「不支持」错误，业务隐藏入口即可 |
 
 `Name` 缺省取可执行文件名（非 ASCII 安全字符归一化成 `-`，避免路径 / plist 解析问题）；命令默认指向当前 exe，绿色版 / 便携版可用环境变量 `GUIS_AUTOSTART_CMD`（如 `"D:\Apps\app.exe" --tray`）覆盖。所有写入都是当前用户级，关闭只需 `SetAutoStart(false)`。
+
+## Lua 脚本（guis/script）
+
+内嵌 [gopher-lua](https://github.com/yuin/gopher-lua)（纯 Go，无 CGO），脚本可以直接搭界面 + 写逻辑，改脚本保存即热重载，不用重新编译：
+
+```lua
+count = 0
+function inc() count = count + 1 end
+
+function view()
+  return ui.col{ pad = 16, gap = 12,
+    ui.text{ key = "cnt", text = "计数：" .. count, size = 22 },
+    ui.button{ text = "+1", onClick = "inc" },
+  }
+end
+```
+
+```go
+script.RunFile("ui.lua", ui.Options{Title: "脚本", Width: 900, Height: 620}, script.Options{})
+```
+
+- 属性名与 `ui/uidsl` 的节点字段一致（`key/text/w/pad/gap/bg/fg/size/weight/onClick…`），同一套写法
+- 能力：`ui.*`（搭界面 / `ui.set` 改属性 / toast / quit）、`timer.*`（after / every / cancel）、`log.*`、`fs.*`（限制在脚本目录内）、`http.*`（可关）
+- 沙箱：不加载 `io` / `package` / `debug`，无 `dofile` / `require` / `os.execute`
+- 性能：树缓存 + dirty，空闲帧不进 Lua；`TryLock` 保证 UI 线程不被脚本阻塞
+- 示例：`go run ./examples/lua-demo`（`-smoke` 无窗口冒烟）；完整文档见 [docs/script-lua.md](docs/script-lua.md)
 
 ## 办公文档（Excel / Word / PDF）
 

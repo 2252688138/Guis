@@ -82,6 +82,9 @@ type Texture struct {
 	ID   uint32
 	W, H int
 	R8   bool
+	// External 外部纹理：ID 指向别人（如 3D 引擎 FBO 颜色附件）的 GL 纹理，
+	// 本渲染器只借用不拥有，DeleteTexture 不会真的删除它。
+	External bool
 }
 
 // Backend 渲染后端接口（可插拔：OpenGL / Skia / D3D11 / Metal）。
