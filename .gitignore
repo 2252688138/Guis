@@ -1,5 +1,8 @@
-﻿# 构建产物（不要提交）
-/bin/
+# 构建产物（不要提交）
+# 例外：bin/ 下放「各端组件库演示二进制」（scripts/build-bin.ps1 产出），
+# 随版本入库，方便直接下载试用；其余内容仍然忽略。
+/bin/*
+!/bin/README.md
 /dist/
 dist/
 web/dist/
