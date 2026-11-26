@@ -37,7 +37,12 @@ try {
 
     # ---- 1. 采集真实导出 API ----
     $symbols = New-Object 'System.Collections.Generic.HashSet[string]'
-    $morePkgs = @('./internal/office/', './internal/geom/', './internal/audio/', './internal/display/', './internal/text/')
+    # 文档覆盖面：docs/api 的 41 篇不只写 ui，还覆盖 httpc / netplay / game / plugins。
+    # 采集范围必须与文档覆盖面一致，否则「文档引用了别的包的符号」会被误判成 API 缺失。
+    $morePkgs = @(
+        './httpc/', './netplay/', './game/', './internal/plugins/', './internal/webcdp/',
+        './internal/office/', './internal/geom/', './internal/audio/', './internal/display/', './internal/text/'
+    )
     foreach ($pkg in (@($Package, $PackageExtra) + $morePkgs)) {
         if (-not $pkg) { continue }
         $txt = & go doc -all $pkg 2>&1
@@ -67,7 +72,7 @@ try {
         # 字体名 / 文档占位符 / 组件泛称（不是 Go 标识符）
         'SimHei', 'SimSun', 'Segoe', 'Symbol', 'ColXxx', 'Col', 'Dock', 'Tour', 'Composer', 'Tint',
         # Win32 / X11 / COM 底层接口名（文档在描述实现机制，不是 guis 导出 API）
-        'BadAccess', 'ExitWindowsEx', 'KeyPress', 'SeShutdownPrivilege', 'XdndFinished', 'XTranslateCoordinates',
+        'BadAccess', 'ExitWindowsEx', 'KeyPress', 'SeShutdownPrivilege', 'XdndFinished', 'XTranslateCoordinates', 'XReparentWindow',
         'HrInit', 'SetOverlayIcon', 'GetUserDefaultUILanguage', 'LCIDToLocaleName', 'ErrNotSupported'
     )
 
@@ -84,6 +89,8 @@ try {
             Where-Object {
                 $_.Length -ge 3 -and
                 $_ -cmatch '^[A-Z]' -and
+                # 测试 / 基准 / 模糊测试函数名不是导出 API（文档讲测试方法时会引用）
+                $_ -cnotmatch '^(Test|Benchmark|Fuzz)[A-Z0-9]' -and
                 $ignore -notcontains $_ -and
                 # 含下划线的一律是环境变量 / Win32 常量（GUIS_LSP_CMD、WM_DROPFILES）
                 $_ -notmatch '_' -and
